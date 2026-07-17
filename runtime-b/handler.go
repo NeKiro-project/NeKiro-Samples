@@ -86,22 +86,38 @@ func (h *Handler) OnSendMessageStream(ctx context.Context, params *a2a.MessageSe
 			return
 		}
 
+		if taskCanceled(task) {
+			terminal = true
+			yield(statusEvent(task.task, a2a.TaskStateCanceled, true), nil)
+			return
+		}
 		if !yield(streamMessage(task.task, request), nil) {
+			return
+		}
+		if taskCanceled(task) {
+			terminal = true
+			yield(statusEvent(task.task, a2a.TaskStateCanceled, true), nil)
 			return
 		}
 		artifactID := a2a.ArtifactID(derivedID("artifact", params.Message.ID))
 		if !yield(artifactEvent(task.task, artifactID, request, false, false, 0), nil) {
 			return
 		}
+		if taskCanceled(task) {
+			terminal = true
+			yield(statusEvent(task.task, a2a.TaskStateCanceled, true), nil)
+			return
+		}
 		if !yield(artifactEvent(task.task, artifactID, request, true, true, 1), nil) {
 			return
 		}
-		if err := h.completeTask(task.task.ID); err != nil {
+		state, err := h.completeTask(task.task.ID)
+		if err != nil {
 			yield(nil, err)
 			return
 		}
 		terminal = true
-		yield(statusEvent(task.task, a2a.TaskStateCompleted, true), nil)
+		yield(statusEvent(task.task, state, true), nil)
 	}
 }
 
@@ -172,18 +188,30 @@ func (h *Handler) createWorkingTask(message *a2a.Message) (*runtimeTask, error) 
 	return stored, nil
 }
 
-func (h *Handler) completeTask(taskID a2a.TaskID) error {
+func (h *Handler) completeTask(taskID a2a.TaskID) (a2a.TaskState, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	stored, exists := h.tasks[taskID]
 	if !exists {
-		return fmt.Errorf("runtime task disappeared")
+		return "", fmt.Errorf("runtime task disappeared")
+	}
+	if stored.task.Status.State == a2a.TaskStateCanceled {
+		return a2a.TaskStateCanceled, nil
 	}
 	if stored.task.Status.State != a2a.TaskStateWorking {
-		return fmt.Errorf("runtime task is not working")
+		return "", fmt.Errorf("runtime task is not working")
 	}
 	stored.task.Status = a2a.TaskStatus{State: a2a.TaskStateCompleted}
-	return nil
+	return a2a.TaskStateCompleted, nil
+}
+
+func taskCanceled(task *runtimeTask) bool {
+	select {
+	case <-task.cancel:
+		return true
+	default:
+		return false
+	}
 }
 
 func (h *Handler) removeWorkingTask(taskID a2a.TaskID) {

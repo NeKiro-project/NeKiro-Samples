@@ -159,6 +159,36 @@ func TestHandlerHoldStreamCancelsSameTask(t *testing.T) {
 	}
 }
 
+func TestHandlerStreamSuccessStopsContentWhenCancelWins(t *testing.T) {
+	handler := NewHandler()
+	var events []a2a.Event
+	var streamErr error
+	for event, err := range handler.OnSendMessageStream(t.Context(), fixtureParams("cancel-stream-success", fixtureStreamSuccess, "payload")) {
+		if err != nil {
+			streamErr = err
+			break
+		}
+		events = append(events, event)
+		if len(events) == 1 {
+			working := requireTaskEvent(t, event)
+			canceled, cancelErr := handler.OnCancelTask(t.Context(), &a2a.TaskIDParams{ID: working.ID})
+			if cancelErr != nil || canceled.Status.State != a2a.TaskStateCanceled {
+				t.Fatalf("cancel = (%#v, %v)", canceled, cancelErr)
+			}
+		}
+	}
+	if streamErr != nil {
+		t.Fatalf("stream error = %v", streamErr)
+	}
+	if len(events) != 2 {
+		t.Fatalf("events = %#v, want working and canceled terminal only", events)
+	}
+	terminal, ok := events[1].(*a2a.TaskStatusUpdateEvent)
+	if !ok || !terminal.Final || terminal.Status.State != a2a.TaskStateCanceled {
+		t.Fatalf("terminal = %#v", events[1])
+	}
+}
+
 func TestHandlerHoldStreamContextTerminationDoesNotCreateTerminal(t *testing.T) {
 	handler := NewHandler()
 	ctx, cancel := context.WithCancel(t.Context())
