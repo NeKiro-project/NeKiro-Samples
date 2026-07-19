@@ -160,32 +160,31 @@ func TestHandlerHoldStreamCancelsSameTask(t *testing.T) {
 }
 
 func TestHandlerStreamSuccessStopsContentWhenCancelWins(t *testing.T) {
-	handler := NewHandler()
-	var events []a2a.Event
-	var streamErr error
-	for event, err := range handler.OnSendMessageStream(t.Context(), fixtureParams("cancel-stream-success", fixtureStreamSuccess, "payload")) {
-		if err != nil {
-			streamErr = err
-			break
-		}
-		events = append(events, event)
-		if len(events) == 1 {
-			working := requireTaskEvent(t, event)
-			canceled, cancelErr := handler.OnCancelTask(t.Context(), &a2a.TaskIDParams{ID: working.ID})
-			if cancelErr != nil || canceled.Status.State != a2a.TaskStateCanceled {
-				t.Fatalf("cancel = (%#v, %v)", canceled, cancelErr)
+	for _, cancelAfter := range []int{1, 2, 3, 4} {
+		t.Run(fmt.Sprintf("after-event-%d", cancelAfter), func(t *testing.T) {
+			handler := NewHandler()
+			var events []a2a.Event
+			for event, err := range handler.OnSendMessageStream(t.Context(), fixtureParams(fmt.Sprintf("cancel-stream-success-%d", cancelAfter), fixtureStreamSuccess, "payload")) {
+				if err != nil {
+					t.Fatalf("stream error = %v", err)
+				}
+				events = append(events, event)
+				if len(events) == cancelAfter {
+					working := requireTaskEvent(t, events[0])
+					canceled, cancelErr := handler.OnCancelTask(t.Context(), &a2a.TaskIDParams{ID: working.ID})
+					if cancelErr != nil || canceled.Status.State != a2a.TaskStateCanceled {
+						t.Fatalf("cancel = (%#v, %v)", canceled, cancelErr)
+					}
+				}
 			}
-		}
-	}
-	if streamErr != nil {
-		t.Fatalf("stream error = %v", streamErr)
-	}
-	if len(events) != 2 {
-		t.Fatalf("events = %#v, want working and canceled terminal only", events)
-	}
-	terminal, ok := events[1].(*a2a.TaskStatusUpdateEvent)
-	if !ok || !terminal.Final || terminal.Status.State != a2a.TaskStateCanceled {
-		t.Fatalf("terminal = %#v", events[1])
+			if len(events) != cancelAfter+1 {
+				t.Fatalf("events = %#v, want %d pre-cancel events and one terminal", events, cancelAfter+1)
+			}
+			terminal, ok := events[len(events)-1].(*a2a.TaskStatusUpdateEvent)
+			if !ok || !terminal.Final || terminal.Status.State != a2a.TaskStateCanceled {
+				t.Fatalf("terminal = %#v", events[len(events)-1])
+			}
+		})
 	}
 }
 
