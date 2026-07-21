@@ -62,4 +62,9 @@ func TestLoadConfigRejectsInvalidValuesWithoutDefaults(t *testing.T) {
 			}
 		})
 	}
+	environment := validEnvironment()
+	environment[RouterEnvironment] = "http://127.0.0.1:4101/"
+	if _, err := LoadConfig(lookupEnvironment(environment)); err == nil {
+		t.Fatal("Router URL with trailing path was accepted")
+	}
 }

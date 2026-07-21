@@ -160,7 +160,7 @@ func parsePort(value string) (int64, error) {
 
 func validateRouterURL(value string) error {
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.Path != "" {
 		return fmt.Errorf("%s must be an http or https origin URL without credentials, query, or fragment", RouterEnvironment)
 	}
 	return nil
