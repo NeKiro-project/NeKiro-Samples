@@ -65,7 +65,7 @@ func (h *Handler) OnSendMessageStream(ctx context.Context, params *a2a.MessageSe
 			yield(nil, errFixtureFailure)
 			return
 		}
-		if request.kind != fixtureStreamSuccess && request.kind != fixtureHold {
+		if request.kind != fixtureStreamSuccess && request.kind != fixtureHold && request.kind != fixtureInterrupted {
 			yield(nil, invalidParams("fixture requires message/send"))
 			return
 		}
@@ -93,6 +93,16 @@ func (h *Handler) OnSendMessageStream(ctx context.Context, params *a2a.MessageSe
 			}
 			terminal = true
 			yield(statusEvent(task.task, a2a.TaskStateCanceled, true), nil)
+			return
+		}
+		if request.kind == fixtureInterrupted {
+			if !yield(streamMessage(task.task, request), nil) {
+				return
+			}
+			artifactID := a2a.ArtifactID(derivedID("artifact", params.Message.ID))
+			if !yield(artifactEvent(task.task, artifactID, request, false, false, 0), nil) {
+				return
+			}
 			return
 		}
 

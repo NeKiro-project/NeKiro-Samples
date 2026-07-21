@@ -14,7 +14,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/runtime
 
 FROM alpine:3.22
 
-RUN apk add --no-cache ca-certificates \
+RUN apk add --no-cache ca-certificates wget \
     && adduser -D -H -u 10003 nekiro
 COPY --from=build /out/runtime-a /usr/local/bin/runtime-a
 USER nekiro

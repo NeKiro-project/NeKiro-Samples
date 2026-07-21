@@ -11,7 +11,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/runtime
 
 FROM alpine:3.22
 
-RUN adduser -D -H -u 10002 nekiro
+RUN apk add --no-cache wget \
+    && adduser -D -H -u 10002 nekiro
 COPY --from=build /out/runtime-b /usr/local/bin/runtime-b
 USER nekiro
 EXPOSE 8092

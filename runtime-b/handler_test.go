@@ -130,6 +130,25 @@ func TestHandlerSuccessfulStreamHasExactOrder(t *testing.T) {
 	}
 }
 
+func TestHandlerInterruptedStreamEndsWithoutTerminal(t *testing.T) {
+	events, err := collectEvents(NewHandler().OnSendMessageStream(t.Context(), fixtureParams("stream-interrupted", fixtureInterrupted, "payload")))
+	if err != nil {
+		t.Fatalf("interrupted stream: %v", err)
+	}
+	if len(events) != 3 {
+		t.Fatalf("event count = %d, want task, message, and one artifact", len(events))
+	}
+	if _, ok := events[0].(*a2a.Task); !ok {
+		t.Fatalf("event 0 = %#v", events[0])
+	}
+	if _, ok := events[1].(*a2a.Message); !ok {
+		t.Fatalf("event 1 = %#v", events[1])
+	}
+	if _, ok := events[2].(*a2a.TaskArtifactUpdateEvent); !ok {
+		t.Fatalf("event 2 = %#v", events[2])
+	}
+}
+
 func TestHandlerHoldStreamCancelsSameTask(t *testing.T) {
 	handler := NewHandler()
 	eventChannel := make(chan a2a.Event, 2)
