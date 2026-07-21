@@ -44,6 +44,17 @@ func TestHandlerSendMessageDeterministicSuccessAndFailure(t *testing.T) {
 	}
 }
 
+func TestHandlerProtocolFixtureReturnsNonTerminalTask(t *testing.T) {
+	result, err := NewHandler().OnSendMessage(t.Context(), fixtureParams("message-protocol", fixtureProtocol, "protocol"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, ok := result.(*a2a.Task)
+	if !ok || task.Status.State != a2a.TaskStateWorking || task.ID == "" {
+		t.Fatalf("protocol fixture result=%#v", result)
+	}
+}
+
 func TestHandlerRejectsInvalidFixtureRequests(t *testing.T) {
 	handler := NewHandler()
 	valid := fixtureParams("message-valid", fixtureSuccess, "value")

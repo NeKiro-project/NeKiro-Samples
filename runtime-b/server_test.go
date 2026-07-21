@@ -54,6 +54,16 @@ func TestListenAddressFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestRuntimeBReadinessDoesNotCreateTaskState(t *testing.T) {
+	handler := NewHandler()
+	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	response := httptest.NewRecorder()
+	NewHTTPHandler(handler).ServeHTTP(response, request)
+	if response.Code != http.StatusOK || len(handler.tasks) != 0 {
+		t.Fatalf("readiness status=%d tasks=%d", response.Code, len(handler.tasks))
+	}
+}
+
 func TestOfficialA2AClientAllActiveOperations(t *testing.T) {
 	handler := NewHandler()
 	server := httptest.NewServer(NewHTTPHandler(handler))

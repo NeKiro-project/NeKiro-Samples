@@ -53,10 +53,15 @@ func newHandlerWithInvoker(config Config, invoker nestedInvoker) (*Handler, erro
 // NewHTTPHandler exposes only the active JSON-RPC A2A boundary.
 func NewHTTPHandler(handler *Handler) http.Handler {
 	jsonRPCHandler := a2asrv.NewJSONRPCHandler(handler)
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /readyz", func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/", func(writer http.ResponseWriter, request *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
 		jsonRPCHandler.ServeHTTP(writer, request)
 	})
+	return mux
 }
 
 func (handler *Handler) OnSendMessage(ctx context.Context, params *a2a.MessageSendParams) (a2a.SendMessageResult, error) {
