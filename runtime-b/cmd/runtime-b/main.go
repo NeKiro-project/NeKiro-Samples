@@ -19,7 +19,15 @@ func main() {
 	if err != nil {
 		log.Fatal("runtime-b authentication config: ", err)
 	}
-	execution, err := runtimeb.NewHTTPHandlerWithAuth(runtimeb.NewHandler(), authenticationConfig)
+	config, err := runtimeb.LoadConfig(os.LookupEnv)
+	if err != nil {
+		log.Fatal(err)
+	}
+	handler, err := runtimeb.NewConfiguredHandler(config, http.DefaultClient)
+	if err != nil {
+		log.Fatal("runtime-b initialize: ", err)
+	}
+	execution, err := runtimeb.NewHTTPHandlerWithAuth(handler, authenticationConfig)
 	if err != nil {
 		log.Fatal("runtime-b authentication: ", err)
 	}

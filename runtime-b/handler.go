@@ -6,6 +6,7 @@ import (
 	"iter"
 	"sync"
 
+	agentsdk "github.com/Nene7ko/NeKiro/sdks/agent-sdk"
 	"github.com/a2aproject/a2a-go/a2a"
 	"github.com/a2aproject/a2a-go/a2asrv"
 )
@@ -17,8 +18,10 @@ type runtimeTask struct {
 
 // Handler implements the active A2A Profile for the deterministic Runtime B sample.
 type Handler struct {
-	mu    sync.RWMutex
-	tasks map[a2a.TaskID]*runtimeTask
+	mu      sync.RWMutex
+	tasks   map[a2a.TaskID]*runtimeTask
+	agentID string
+	nested  *nestedService
 }
 
 var _ a2asrv.RequestHandler = (*Handler)(nil)
@@ -27,7 +30,24 @@ func NewHandler() *Handler {
 	return &Handler{tasks: make(map[a2a.TaskID]*runtimeTask)}
 }
 
-func (h *Handler) OnSendMessage(_ context.Context, params *a2a.MessageSendParams) (a2a.SendMessageResult, error) {
+// NewConfiguredHandler creates the production Runtime B handler with one
+// explicit Router-mediated nested-call destination.
+func NewConfiguredHandler(config Config, doer agentsdk.HTTPDoer) (*Handler, error) {
+	if err := config.Validate(); err != nil {
+		return nil, err
+	}
+	sdk, err := agentsdk.NewClient(doer, config.RouterURL, config.RouterToken, config.ResponseLimit, config.EventLimit)
+	if err != nil {
+		return nil, fmt.Errorf("runtime-b create Agent SDK client: %w", err)
+	}
+	nested, err := newNestedService(config, sdk)
+	if err != nil {
+		return nil, err
+	}
+	return &Handler{tasks: make(map[a2a.TaskID]*runtimeTask), agentID: config.AgentID, nested: nested}, nil
+}
+
+func (h *Handler) OnSendMessage(ctx context.Context, params *a2a.MessageSendParams) (a2a.SendMessageResult, error) {
 	request, err := parseFixture(params)
 	if err != nil {
 		return nil, err
@@ -35,6 +55,19 @@ func (h *Handler) OnSendMessage(_ context.Context, params *a2a.MessageSendParams
 	switch request.kind {
 	case fixtureSuccess:
 		return successMessage(params.Message, request), nil
+	case fixtureNested:
+		if h.nested == nil {
+			return nil, invalidParams("nested fixture is not configured")
+		}
+		platformContext, err := h.nested.platformContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+		result, err := h.nested.invoke(ctx, platformContext, request.value)
+		if err != nil {
+			return nil, safeNestedFailure(err)
+		}
+		return nestedMessage(params.Message, result), nil
 	case fixtureFailure:
 		return nil, errFixtureFailure
 	case fixtureProtocol:

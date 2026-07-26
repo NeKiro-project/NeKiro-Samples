@@ -135,6 +135,35 @@ func rootInput(message *a2a.Message) (json.RawMessage, error) {
 	return input, nil
 }
 
+func rootInputValue(message *a2a.Message) (json.RawMessage, error) {
+	input, err := rootInput(message)
+	if err != nil {
+		return nil, err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(input, &fields); err != nil || fields == nil || len(fields) != 2 {
+		return nil, errors.New("runtime-a responder input is invalid")
+	}
+	value, ok := fields["value"]
+	if !ok || len(value) == 0 || !json.Valid(value) {
+		return nil, errors.New("runtime-a responder value is missing")
+	}
+	return value, nil
+}
+
+func responderMessage(input *a2a.Message, value json.RawMessage) *a2a.Message {
+	return &a2a.Message{
+		ID:        "runtime-a-responder-result-" + input.ID,
+		ContextID: input.ContextID,
+		Role:      a2a.MessageRoleAgent,
+		Parts: []a2a.Part{a2a.DataPart{Data: map[string]any{
+			"agent":   "runtime-a",
+			"fixture": "success",
+			"value":   value,
+		}}},
+	}
+}
+
 func combinedResult(result *agentsdk.NestedResult) (json.RawMessage, error) {
 	if result == nil {
 		return nil, errors.New("runtime-a nested result is required")

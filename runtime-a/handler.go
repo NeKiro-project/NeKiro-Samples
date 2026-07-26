@@ -81,6 +81,20 @@ func (handler *Handler) OnSendMessage(ctx context.Context, params *a2a.MessageSe
 	if !ok {
 		return nil, invalidParams("managed A2A call context is required")
 	}
+	claims, ok := routerauth.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, invalidParams("managed Router credential context is required")
+	}
+	if claims.AgentID != handler.config.AgentID {
+		return nil, invalidParams("managed Router credential Agent identity is invalid")
+	}
+	if claims.Capability == "runtime.echo" {
+		value, err := rootInputValue(params.Message)
+		if err != nil {
+			return nil, err
+		}
+		return responderMessage(params.Message, value), nil
+	}
 	platformContext, err := handler.service.platformContext(callContext.RequestMeta())
 	if err != nil {
 		return nil, err

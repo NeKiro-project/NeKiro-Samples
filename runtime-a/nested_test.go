@@ -31,6 +31,10 @@ func httptestNewServer(t *testing.T, handler http.Handler) *httptest.Server {
 }
 
 func newClient(t *testing.T, server *httptest.Server, headers map[string]string) *a2aclient.Client {
+	return newClientWithCapability(t, server, headers, "fixture")
+}
+
+func newClientWithCapability(t *testing.T, server *httptest.Server, headers map[string]string, capability string) *a2aclient.Client {
 	t.Helper()
 	meta := make(a2aclient.CallMeta, len(headers))
 	for name, value := range headers {
@@ -38,7 +42,7 @@ func newClient(t *testing.T, server *httptest.Server, headers map[string]string)
 	}
 	client, err := a2aclient.NewFromEndpoints(t.Context(), []a2a.AgentInterface{{
 		URL: server.URL, Transport: a2a.TransportProtocolJSONRPC,
-	}}, a2aclient.WithJSONRPCTransport(server.Client()), a2aclient.WithInterceptors(a2aclient.NewStaticCallMetaInjector(meta), runtimeAAuthInterceptor{}))
+	}}, a2aclient.WithJSONRPCTransport(server.Client()), a2aclient.WithInterceptors(a2aclient.NewStaticCallMetaInjector(meta), runtimeAAuthInterceptor{capability: capability}))
 	if err != nil {
 		t.Fatalf("create A2A client: %v", err)
 	}
@@ -48,9 +52,11 @@ func newClient(t *testing.T, server *httptest.Server, headers map[string]string)
 
 var runtimeAAuthSequence atomic.Uint64
 
-type runtimeAAuthInterceptor struct{}
+type runtimeAAuthInterceptor struct {
+	capability string
+}
 
-func (runtimeAAuthInterceptor) Before(ctx context.Context, request *a2aclient.Request) (context.Context, error) {
+func (interceptor runtimeAAuthInterceptor) Before(ctx context.Context, request *a2aclient.Request) (context.Context, error) {
 	value := func(name string) string {
 		values := request.Meta.Get(name)
 		if len(values) == 1 {
@@ -59,10 +65,14 @@ func (runtimeAAuthInterceptor) Before(ctx context.Context, request *a2aclient.Re
 		return ""
 	}
 	now := time.Now().Unix()
+	capability := interceptor.capability
+	if capability == "" {
+		capability = "fixture"
+	}
 	claims := jwt.MapClaims{
 		"iss": "https://a2a-router.nekiro.test", "aud": []string{"http://runtime-a:8091"}, "exp": now + 30, "iat": now, "jti": fmt.Sprintf("rtj_runtime_a_%d", runtimeAAuthSequence.Add(1)),
 		"workspaceId": value("x-nek-workspace-id"), "agentId": "agent-runtime-a", "agentVersion": "1.0.0", "releaseId": "release-a", "cardDigest": strings.Repeat("a", 64),
-		"capability": "fixture", "invocationId": value("x-nek-invocation-id"), "rootTaskId": value("x-nek-root-task-id"), "traceId": value("x-nek-trace-id"),
+		"capability": capability, "invocationId": value("x-nek-invocation-id"), "rootTaskId": value("x-nek-root-task-id"), "traceId": value("x-nek-trace-id"),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
 	token.Header["typ"] = contracts.RouterAgentCredentialType
@@ -79,7 +89,7 @@ func (runtimeAAuthInterceptor) Before(ctx context.Context, request *a2aclient.Re
 	request.Meta.Append("x-nek-agent-card-version", "1.0.0")
 	request.Meta.Append("x-nek-agent-release-id", "release-a")
 	request.Meta.Append("x-nek-agent-card-digest", strings.Repeat("a", 64))
-	request.Meta.Append("x-nek-capability", "fixture")
+	request.Meta.Append("x-nek-capability", capability)
 	request.Meta.Append("x-nek-target-agent-id", "agent-runtime-a")
 	return ctx, nil
 }
@@ -152,6 +162,47 @@ func TestRuntimeAUsesOneManagedNestedCallAndReturnsCombinedResult(t *testing.T) 
 	defer invoker.mu.Unlock()
 	if len(invoker.calls) != 1 || invoker.calls[0].Context.RootTaskID != "task-1" || invoker.calls[0].Request.TargetAgentID != config.TargetAgentID || invoker.calls[0].Request.Stream {
 		t.Fatalf("nested calls = %#v", invoker.calls)
+	}
+}
+
+func TestRuntimeAEchoCapabilityRespondsWithoutNestedCall(t *testing.T) {
+	config, err := LoadConfig(lookupEnvironment(validEnvironment()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoker := &recordingInvoker{result: func(agentsdk.PlatformContext) *agentsdk.NestedResult {
+		return &agentsdk.NestedResult{InvocationID: "unexpected-child", RootTaskID: "task-1", TraceID: "trace-1", Status: "succeeded", Result: json.RawMessage(`{"agent":"runtime-b"}`)}
+	}}
+	handler, err := newHandlerWithInvoker(config, invoker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptestNewServer(t, NewHTTPHandler(handler))
+	client := newClientWithCapability(t, server, map[string]string{
+		"x-nek-trace-id":      "trace-1",
+		"x-nek-invocation-id": "root-1",
+		"x-nek-root-task-id":  "task-1",
+		"x-nek-workspace-id":  "workspace-1",
+	}, "runtime.echo")
+	result, err := client.SendMessage(t.Context(), &a2a.MessageSendParams{Message: &a2a.Message{
+		ID: "root-echo", Role: a2a.MessageRoleUser,
+		Parts: []a2a.Part{a2a.DataPart{Data: map[string]any{"fixture": "success", "value": "echo-value"}}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	message, ok := result.(*a2a.Message)
+	if !ok || len(message.Parts) != 1 {
+		t.Fatalf("result=%#v", result)
+	}
+	data, ok := message.Parts[0].(a2a.DataPart)
+	if !ok || data.Data["agent"] != "runtime-a" || data.Data["value"] != "echo-value" {
+		t.Fatalf("responder data=%#v", data.Data)
+	}
+	invoker.mu.Lock()
+	defer invoker.mu.Unlock()
+	if len(invoker.calls) != 0 {
+		t.Fatalf("responder made nested calls=%#v", invoker.calls)
 	}
 }
 
