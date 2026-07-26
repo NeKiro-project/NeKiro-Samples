@@ -74,9 +74,13 @@ func (service *nestedService) invoke(ctx context.Context, platformContext agents
 }
 
 func nestedMessage(input *a2a.Message, result *agentsdk.NestedResult) *a2a.Message {
+	contextID := input.ContextID
+	if contextID == "" {
+		contextID = derivedID("context", input.ID)
+	}
 	return &a2a.Message{
 		ID:        "runtime-b-nested-result-" + input.ID,
-		ContextID: input.ContextID,
+		ContextID: contextID,
 		Role:      a2a.MessageRoleAgent,
 		Parts: []a2a.Part{a2a.DataPart{Data: map[string]any{
 			"agent":             "runtime-b",

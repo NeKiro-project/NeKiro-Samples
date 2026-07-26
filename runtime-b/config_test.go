@@ -62,7 +62,7 @@ func TestLoadConfigRejectsInvalidValuesWithoutDefaults(t *testing.T) {
 			}
 		})
 	}
-	for _, value := range []string{"http://127.0.0.1:4101/", "http://127.0.0.1:4101?", "http://127.0.0.1:65536", "http://127.0.0.1:4101#"} {
+	for _, value := range []string{"http://127.0.0.1:4101/", "http://127.0.0.1:4101?", "http://127.0.0.1:65536", "http://127.0.0.1:4101#", "http://a2a-router:"} {
 		environment := validRuntimeBEnvironment()
 		environment[RouterEnvironment] = value
 		if _, err := LoadConfig(runtimeBLookup(environment)); err == nil {

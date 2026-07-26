@@ -8,6 +8,7 @@ import (
 
 	"github.com/Nene7ko/NeKiro/contracts"
 	agentsdk "github.com/Nene7ko/NeKiro/sdks/agent-sdk"
+	"github.com/a2aproject/a2a-go/a2a"
 )
 
 type runtimeBNestedRecordingInvoker struct {
@@ -76,5 +77,15 @@ func TestPlatformContextFromClaimsRequiresExactAgentIdentity(t *testing.T) {
 	claims := contracts.RouterInvocationCredentialClaimsV1{AgentID: "runtime-b", InvocationID: "inv-1", RootTaskID: "task-1", TraceID: "trace-1", WorkspaceID: "workspace-1"}
 	if _, err := platformContextFromClaims(claims, "runtime-a"); err == nil {
 		t.Fatal("wrong Agent identity was accepted")
+	}
+}
+
+func TestNestedMessageDerivesMissingContextID(t *testing.T) {
+	input := &a2a.Message{ID: "root-message"}
+	result := &agentsdk.NestedResult{InvocationID: "child-1", Result: json.RawMessage(`{"ok":true}`)}
+
+	message := nestedMessage(input, result)
+	if message.ContextID != derivedID("context", input.ID) {
+		t.Fatalf("nested message context ID = %q", message.ContextID)
 	}
 }
