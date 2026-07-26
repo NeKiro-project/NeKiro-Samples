@@ -175,7 +175,7 @@ func requiredLimit(lookup func(string) (string, bool), name string) (int64, erro
 
 func validateRouterURL(value string) error {
 	parsed, err := url.Parse(value)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawPath != "" || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawFragment != "" {
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil || parsed.Path != "" || parsed.RawPath != "" || parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(value, "#") || parsed.Fragment != "" || parsed.RawFragment != "" {
 		return fmt.Errorf("%s must be an http or https origin URL without credentials, path, query, or fragment", RouterEnvironment)
 	}
 	if parsed.Port() != "" {
