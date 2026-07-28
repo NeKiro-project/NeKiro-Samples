@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Nene7ko/NeKiro/contracts"
@@ -87,5 +88,42 @@ func TestNestedMessageDerivesMissingContextID(t *testing.T) {
 	message := nestedMessage(input, result)
 	if message.ContextID != derivedID("context", input.ID) {
 		t.Fatalf("nested message context ID = %q", message.ContextID)
+	}
+}
+
+func TestNestedFixtureUsesManagedRouterContext(t *testing.T) {
+	if result, err := NewHandler().OnSendMessage(t.Context(), fixtureParams("unconfigured-nested", fixtureNested, "value")); result != nil || !errors.Is(err, a2a.ErrInvalidParams) {
+		t.Fatalf("unconfigured nested fixture = (%#v, %v)", result, err)
+	}
+
+	environment := validRuntimeBEnvironment()
+	environment[AgentIDEnvironment] = "runtime-b"
+	config, err := LoadConfig(runtimeBLookup(environment))
+	if err != nil {
+		t.Fatal(err)
+	}
+	invoker := &runtimeBNestedRecordingInvoker{result: &agentsdk.NestedResult{
+		InvocationID: "child-1", RootTaskID: "task-runtime-b", TraceID: "trace-runtime-b", Status: "succeeded", Result: json.RawMessage(`{"agent":"runtime-a","value":"ok"}`),
+	}}
+	service, err := newNestedService(config, invoker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := &Handler{tasks: make(map[a2a.TaskID]*runtimeTask), agentID: config.AgentID, nested: service}
+	server := httptest.NewServer(httpHandler(t, handler))
+	t.Cleanup(server.Close)
+
+	client := newA2AClient(t, server, nil)
+	result, err := client.SendMessage(t.Context(), fixtureParams("nested-message", fixtureNested, "reverse-value"))
+	if err != nil {
+		t.Fatalf("nested send: %v", err)
+	}
+	message := requireMessage(t, result)
+	data := requireDataPart(t, message.Parts[0])
+	if message.ContextID != derivedID("context", "nested-message") || data.Data["agent"] != "runtime-b" || data.Data["childInvocationId"] != "child-1" {
+		t.Fatalf("nested response = %#v context=%q", data.Data, message.ContextID)
+	}
+	if invoker.context.InvocationID != "inv_runtime_b" || invoker.context.RootTaskID != "task-runtime-b" || invoker.context.TraceID != "trace-runtime-b" || invoker.context.WorkspaceID != "workspace-a" || invoker.context.AgentID != config.AgentID || invoker.request.TargetAgentID != config.TargetAgentID || invoker.request.Capability != config.Capability || invoker.request.Stream {
+		t.Fatalf("nested managed call context=%#v request=%#v", invoker.context, invoker.request)
 	}
 }
