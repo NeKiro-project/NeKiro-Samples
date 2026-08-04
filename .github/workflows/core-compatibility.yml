@@ -1,0 +1,80 @@
+name: Core compatibility
+
+on:
+  workflow_call:
+    inputs:
+      core_sha:
+        description: Full NeKiro Core commit SHA to verify
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      core_sha:
+        description: Full NeKiro Core commit SHA to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-samples-${{ inputs.core_sha }}
+  cancel-in-progress: true
+
+jobs:
+  samples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out canonical Samples
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: NeKiro-project/NeKiro-Samples
+          ref: main
+
+      - name: Set up Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Validate requested Core revision
+        shell: bash
+        env:
+          CORE_SHA: ${{ inputs.core_sha }}
+        run: |
+          if [[ ! "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo 'core_sha must be one full lowercase commit SHA.' >&2
+            exit 1
+          fi
+
+      - name: Resolve exact Core contracts
+        shell: bash
+        env:
+          CORE_SHA: ${{ inputs.core_sha }}
+        run: |
+          go get "github.com/NeKiro-project/NeKiro@${CORE_SHA}"
+          go mod tidy
+          resolved=$(go list -m -f '{{.Version}}' github.com/NeKiro-project/NeKiro)
+          case "$resolved" in
+            *-"${CORE_SHA:0:12}") ;;
+            *) echo "Core resolved to $resolved instead of $CORE_SHA" >&2; exit 1 ;;
+          esac
+
+      - name: Build and test both Runtimes
+        run: |
+          go build ./...
+          go test -count=1 ./runtime-a/... ./internal/challengeproof/...
+          go test -count=1 ./runtime-b/...
+          go test -race ./...
+          go vet ./...
+
+      - name: Build both sample images
+        run: |
+          docker build --file runtime-a/Dockerfile --tag nekiro-runtime-a:core-compatibility .
+          docker build --file runtime-b/Dockerfile --tag nekiro-runtime-b:core-compatibility .
+
+      - name: Report success
+        env:
+          CORE_SHA: ${{ inputs.core_sha }}
+        run: echo "::notice title=Sample compatibility passed::Runtime A, Runtime B, and both images passed against Core ${CORE_SHA}."

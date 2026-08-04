@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
@@ -40,6 +41,9 @@ jobs:
 
       - name: Build all samples
         run: go build ./...
+
+      - name: Check patch whitespace
+        run: git diff --check
 
   runtime-a:
     runs-on: ubuntu-latest
@@ -110,6 +114,13 @@ jobs:
         run: |
           test -s LICENSE
           test -s README.md
+          test -s runtime-a/README.md
+          test -s runtime-b/README.md
+          test -s .github/pull_request_template.md
+          if git grep -nE '^[[:space:]]*uses:' -- .github/workflows | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)'; then
+            echo 'GitHub Action is not pinned to a full commit SHA.' >&2
+            exit 1
+          fi
           if go list -f '{{join .Imports "\n"}}' ./... | \
             grep -E 'github.com/NeKiro-project/NeKiro/(apps|agents|sdks|tests|internal)|^database/sql$|^github.com/jackc/pgx'; then
             echo 'Sample source crossed a core implementation or database boundary.' >&2
