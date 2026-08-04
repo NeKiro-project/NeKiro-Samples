@@ -1,9 +1,10 @@
-module github.com/NeKiro-project/NeKiro/agents/runtime-a
+module github.com/NeKiro-project/NeKiro-Samples
 
 go 1.26.0
 
 require (
-	github.com/NeKiro-project/NeKiro v0.0.0
+	github.com/NeKiro-project/NeKiro v0.0.0-20260804142931-aad73c450435
+	github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260804145402-39c37c8929b5
 	github.com/a2aproject/a2a-go v0.3.15
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	trpc.group/trpc-go/trpc-agent-go v1.10.0
@@ -39,5 +40,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	trpc.group/trpc-go/trpc-a2a-go v0.2.5 // indirect
 )
-
-replace github.com/NeKiro-project/NeKiro => ../..

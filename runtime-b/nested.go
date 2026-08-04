@@ -7,8 +7,8 @@ import (
 	"fmt"
 
 	"github.com/NeKiro-project/NeKiro/contracts"
-	agentsdk "github.com/NeKiro-project/NeKiro/sdks/agent-sdk"
-	"github.com/NeKiro-project/NeKiro/sdks/agent-sdk/routerauth"
+	agentsdk "github.com/NeKiro-project/nekiro-sdk-go/agent"
+	"github.com/NeKiro-project/nekiro-sdk-go/agent/routerauth"
 	"github.com/a2aproject/a2a-go/a2a"
 )
 

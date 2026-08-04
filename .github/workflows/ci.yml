@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Check formatting
+        shell: bash
+        run: test -z "$(gofmt -l .)"
+
+      - name: Check module graph
+        shell: bash
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          go mod verify
+
+      - name: Build all samples
+        run: go build ./...
+
+      - name: Check patch whitespace
+        run: git diff --check
+
+  runtime-a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Test Runtime A
+        run: go test -count=1 ./runtime-a/... ./internal/challengeproof/...
+
+      - name: Race test Runtime A
+        run: go test -race ./runtime-a/... ./internal/challengeproof/...
+
+      - name: Vet Runtime A
+        run: go vet ./runtime-a/... ./internal/challengeproof/...
+
+  runtime-b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Set up Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Test Runtime B
+        run: go test -count=1 ./runtime-b/...
+
+      - name: Race test Runtime B
+        run: go test -race ./runtime-b/...
+
+      - name: Vet Runtime B
+        run: go vet ./runtime-b/...
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Build Runtime A image
+        run: docker build --file runtime-a/Dockerfile --tag nekiro-runtime-a:ci .
+
+      - name: Build Runtime B image
+        run: docker build --file runtime-b/Dockerfile --tag nekiro-runtime-b:ci .
+
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - name: Verify ownership and dependency boundaries
+        shell: bash
+        run: |
+          test -s LICENSE
+          test -s README.md
+          test -s runtime-a/README.md
+          test -s runtime-b/README.md
+          test -s .github/pull_request_template.md
+          if git grep -nE '^[[:space:]]*uses:' -- .github/workflows | grep -Ev '@[0-9a-f]{40}([[:space:]]|$)'; then
+            echo 'GitHub Action is not pinned to a full commit SHA.' >&2
+            exit 1
+          fi
+          if go list -f '{{join .Imports "\n"}}' ./... | \
+            grep -E 'github.com/NeKiro-project/NeKiro/(apps|agents|sdks|tests|internal)|^database/sql$|^github.com/jackc/pgx'; then
+            echo 'Sample source crossed a core implementation or database boundary.' >&2
+            exit 1
+          fi
+          if grep -E '(^|[[:space:]])replace[[:space:]]' go.mod; then
+            echo 'Local module replacement detected.' >&2
+            exit 1
+          fi
+          if grep -R --line-number -E 'COPY (contracts|sdks|agents)|@(main|master|latest)([[:space:]]|$)' runtime-a/Dockerfile runtime-b/Dockerfile go.mod; then
+            echo 'Copied source or floating dependency detected.' >&2
+            exit 1
+          fi
+          if git grep -n -I -E '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})'; then
+            echo 'Potential secret material detected.' >&2
+            exit 1
+          fi
+
+  required:
+    if: always()
+    needs:
+      - quality
+      - runtime-a
+      - runtime-b
+      - images
+      - security
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require all CI jobs
+        env:
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          RUNTIME_A_RESULT: ${{ needs.runtime-a.result }}
+          RUNTIME_B_RESULT: ${{ needs.runtime-b.result }}
+          IMAGES_RESULT: ${{ needs.images.result }}
+          SECURITY_RESULT: ${{ needs.security.result }}
+        shell: bash
+        run: |
+          for result in "$QUALITY_RESULT" "$RUNTIME_A_RESULT" "$RUNTIME_B_RESULT" "$IMAGES_RESULT" "$SECURITY_RESULT"; do
+            test "$result" = success
+          done

@@ -1,5 +1,9 @@
 github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAwZ/2OOE=
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
+github.com/NeKiro-project/NeKiro v0.0.0-20260804142931-aad73c450435 h1:Qwd8L31Yto8HZgDvekdMi53jEMNAt1uwqiXPh8IWkVA=
+github.com/NeKiro-project/NeKiro v0.0.0-20260804142931-aad73c450435/go.mod h1:ceTCf86U3pNqSjqJXWgkOhfCv+BbEUicGD1IfY+R8Js=
+github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260804145402-39c37c8929b5 h1:wx8nuBluyNb7MhMOURtX/9/Q+FBNcniJqoCMpxBnrwE=
+github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260804145402-39c37c8929b5/go.mod h1:lxAQLsSVXE3lmWoz+SMDKsDOc1b0Vj7okAGNkE7KFRI=
 github.com/a2aproject/a2a-go v0.3.15 h1:h5YpCiPq3jxQ5rIns7oDjPag3ivP8u817AzdA4F+NiI=
 github.com/a2aproject/a2a-go v0.3.15/go.mod h1:I7Cm+a1oL+UT6zMoP+roaRE5vdfUa1iQGVN8aSOuZ0I=
 github.com/bmatcuk/doublestar/v4 v4.9.1 h1:X8jg9rRZmJd4yRy7ZeNDRnM+T3ZfHv15JiBJ/avrEXE=

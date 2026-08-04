@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/NeKiro-project/NeKiro/agents/internal/challengeproof"
-	runtimea "github.com/NeKiro-project/NeKiro/agents/runtime-a"
+	"github.com/NeKiro-project/NeKiro-Samples/internal/challengeproof"
+	runtimea "github.com/NeKiro-project/NeKiro-Samples/runtime-a"
 )
 
 func main() {

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	agentsdk "github.com/NeKiro-project/NeKiro/sdks/agent-sdk"
+	agentsdk "github.com/NeKiro-project/nekiro-sdk-go/agent"
 )
 
 func TestRuntimeAConcurrentCallsRemainIsolated(t *testing.T) {
@@ -80,15 +80,15 @@ func TestRuntimeABoundaryDoesNotCopyCredentialIntoOutputOrPlatformModule(t *test
 	if strings.Contains(config.RouterToken, config.AgentID) {
 		t.Fatal("test credential unexpectedly overlaps identity")
 	}
-	data, err := os.ReadFile("go.mod")
+	data, err := os.ReadFile("../go.mod")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(data), "trpc.group/trpc-go/trpc-agent-go v1.10.0") {
-		t.Fatal("Runtime A framework is not pinned in the nested module")
+		t.Fatal("Runtime A framework is not pinned in the Samples module")
 	}
-	if strings.Contains(string(data), "apps/") || strings.Contains(string(data), "agents/runtime-b") {
-		t.Fatal("nested module declares a platform or Runtime B dependency")
+	if strings.Contains(string(data), "replace ") || strings.Contains(string(data), "github.com/NeKiro-project/NeKiro/apps/") {
+		t.Fatal("Samples module declares a replacement or core implementation dependency")
 	}
 	for _, sourceName := range []string{"config.go", "nested.go", "runtime.go", "handler.go"} {
 		source, err := os.ReadFile(sourceName)

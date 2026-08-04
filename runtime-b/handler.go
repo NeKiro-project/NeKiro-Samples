@@ -6,7 +6,7 @@ import (
 	"iter"
 	"sync"
 
-	agentsdk "github.com/NeKiro-project/NeKiro/sdks/agent-sdk"
+	agentsdk "github.com/NeKiro-project/nekiro-sdk-go/agent"
 	"github.com/a2aproject/a2a-go/a2a"
 	"github.com/a2aproject/a2a-go/a2asrv"
 )
