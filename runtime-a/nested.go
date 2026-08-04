@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/Nene7ko/NeKiro/contracts"
-	agentsdk "github.com/Nene7ko/NeKiro/sdks/agent-sdk"
+	"github.com/NeKiro-project/NeKiro/contracts"
+	agentsdk "github.com/NeKiro-project/NeKiro/sdks/agent-sdk"
 	"github.com/a2aproject/a2a-go/a2a"
 	"github.com/a2aproject/a2a-go/a2asrv"
 )

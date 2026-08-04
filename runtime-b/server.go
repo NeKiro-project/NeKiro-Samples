@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Nene7ko/NeKiro/sdks/agent-sdk/routerauth"
+	"github.com/NeKiro-project/NeKiro/sdks/agent-sdk/routerauth"
 	"github.com/a2aproject/a2a-go/a2asrv"
 )
 

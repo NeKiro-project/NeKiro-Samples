@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Nene7ko/NeKiro/contracts"
-	"github.com/Nene7ko/NeKiro/sdks/agent-sdk/routerauth"
+	"github.com/NeKiro-project/NeKiro/contracts"
+	"github.com/NeKiro-project/NeKiro/sdks/agent-sdk/routerauth"
 )
 
 const (

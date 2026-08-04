@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	agentsdk "github.com/Nene7ko/NeKiro/sdks/agent-sdk"
+	agentsdk "github.com/NeKiro-project/NeKiro/sdks/agent-sdk"
 	"trpc.group/trpc-go/trpc-agent-go/agent"
 	"trpc.group/trpc-go/trpc-agent-go/event"
 	"trpc.group/trpc-go/trpc-agent-go/model"

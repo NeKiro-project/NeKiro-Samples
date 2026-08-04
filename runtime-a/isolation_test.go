@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	agentsdk "github.com/Nene7ko/NeKiro/sdks/agent-sdk"
+	agentsdk "github.com/NeKiro-project/NeKiro/sdks/agent-sdk"
 )
 
 func TestRuntimeAConcurrentCallsRemainIsolated(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/Nene7ko/NeKiro/contracts"
+	"github.com/NeKiro-project/NeKiro/contracts"
 	"github.com/a2aproject/a2a-go/a2a"
 )
 
