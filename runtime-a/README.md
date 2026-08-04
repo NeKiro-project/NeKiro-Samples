@@ -1,9 +1,10 @@
 # Runtime A
 
 Runtime A is the isolated second sample Runtime for Issue #29. It uses
-`trpc-agent-go` only inside this nested Go module for Agent/Runner/Event
+`trpc-agent-go` only inside the Runtime A packages for Agent/Runner/Event
 execution. It uses the repository's active `a2a-go` JSON-RPC adapter at the
-wire boundary and the thin `sdks/agent-sdk` for exactly one nested Router call.
+wire boundary and the public `nekiro-sdk-go/agent` package for exactly one
+nested Router call.
 
 The sample has no platform database access, no Runtime B package imports, no
 direct target URL, no retry/cache/alternate route, and no configuration
@@ -34,9 +35,9 @@ deterministic Runtime A data message containing the validated child result.
 Run the isolated tests with:
 
 ```powershell
-go test ./...
-go test -race ./...
-go vet ./...
+go test ./runtime-a/...
+go test -race ./runtime-a/...
+go vet ./runtime-a/...
 ```
 
 `RUNTIME_A_ROUTER_TOKEN` is an exact credential. It must not be logged,

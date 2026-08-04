@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/NeKiro-project/NeKiro/agents/internal/challengeproof"
-	runtimeb "github.com/NeKiro-project/NeKiro/agents/runtime-b"
-	"github.com/NeKiro-project/NeKiro/sdks/agent-sdk/routerauth"
+	"github.com/NeKiro-project/NeKiro-Samples/internal/challengeproof"
+	runtimeb "github.com/NeKiro-project/NeKiro-Samples/runtime-b"
+	"github.com/NeKiro-project/nekiro-sdk-go/agent/routerauth"
 )
 
 func main() {

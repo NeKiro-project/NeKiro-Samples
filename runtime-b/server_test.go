@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/NeKiro-project/NeKiro/contracts"
-	"github.com/NeKiro-project/NeKiro/sdks/agent-sdk/routerauth"
+	"github.com/NeKiro-project/nekiro-sdk-go/agent/routerauth"
 	"github.com/a2aproject/a2a-go/a2a"
 	"github.com/a2aproject/a2a-go/a2aclient"
 	"github.com/a2aproject/a2a-go/a2asrv"

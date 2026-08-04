@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/NeKiro-project/NeKiro/contracts"
-	"github.com/NeKiro-project/NeKiro/sdks/agent-sdk/routerauth"
+	"github.com/NeKiro-project/nekiro-sdk-go/agent/routerauth"
 )
 
 const (

@@ -4,14 +4,10 @@ WORKDIR /src
 ARG GOPROXY=https://proxy.golang.org
 ARG GOSUMDB=sum.golang.org
 COPY go.mod go.sum ./
-COPY contracts ./contracts
-COPY sdks/agent-sdk ./sdks/agent-sdk
-COPY agents/internal/challengeproof ./agents/internal/challengeproof
-COPY agents/runtime-a/go.mod agents/runtime-a/go.sum ./agents/runtime-a/
-WORKDIR /src/agents/runtime-a
 RUN GOPROXY="$GOPROXY" GOSUMDB="$GOSUMDB" go mod download
-COPY agents/runtime-a ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/runtime-a ./cmd/runtime-a
+COPY internal ./internal
+COPY runtime-a ./runtime-a
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/runtime-a ./runtime-a/cmd/runtime-a
 
 FROM alpine:3.22
 
