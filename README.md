@@ -71,6 +71,12 @@ Do not invent placeholder credentials simply to make a process start. Use
 NeKiro-Stack for a real local run so the Router, signed credential policy,
 Agent Cards, publication, installation, and Ledger are all explicit.
 
+## RepoWiki
+
+The [NeKiro Samples RepoWiki](https://nekiro-project.github.io/NeKiro-Samples/)
+publishes the repository and runtime documentation in English and Chinese with
+MkDocs Material. The source README files remain canonical.
+
 ## Pull requests
 
 Pull requests must identify the affected Runtime, the exact Core and SDK
