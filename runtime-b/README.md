@@ -15,6 +15,7 @@ alternate route.
 ```text
 RUNTIME_B_LISTEN_ADDR
 RUNTIME_B_AGENT_ID
+RUNTIME_B_INSTANCE_ID
 RUNTIME_B_ROUTER_URL
 RUNTIME_B_ROUTER_TOKEN
 RUNTIME_B_TARGET_AGENT_ID
@@ -30,6 +31,10 @@ NEKIRO_AGENT_ROUTER_PUBLIC_KEY_BASE64URL
 
 All values are required and validated. Credentials have no default and must
 not be logged, trimmed, returned in A2A payloads, or stored in platform facts.
+`RUNTIME_B_INSTANCE_ID` is a non-sensitive deployment identifier included in
+the sample's JSON and SSE results so Stack acceptance can prove which replica
+handled an Invocation. It does not change the Agent ID, Release identity,
+Router credential audience, or nested-call authorization.
 
 ## Test Runtime B
 

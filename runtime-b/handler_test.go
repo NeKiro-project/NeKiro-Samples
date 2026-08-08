@@ -30,7 +30,7 @@ func TestHandlerSendMessageDeterministicSuccessAndFailure(t *testing.T) {
 		t.Fatalf("deterministic identities differ: %#v / %#v", firstMessage, secondMessage)
 	}
 	part := requireDataPart(t, firstMessage.Parts[0])
-	if part.Data["agent"] != "runtime-b" || part.Data["fixture"] != "success" {
+	if part.Data["agent"] != "runtime-b" || part.Data["instanceId"] != "runtime-b" || part.Data["fixture"] != "success" {
 		t.Fatalf("success result = %#v", part.Data)
 	}
 	value, ok := part.Data["value"].(map[string]any)
