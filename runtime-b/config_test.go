@@ -19,6 +19,66 @@ func validRuntimeBEnvironment() map[string]string {
 	}
 }
 
+func validNacosRegistrationEnvironment() map[string]string {
+	return map[string]string{
+		RegistrationModeEnvironment:       RegistrationModeNacos,
+		NacosAPIOriginEnvironment:         "http://nacos:8848/nacos",
+		NacosNamespaceEnvironment:         "public",
+		NacosGroupEnvironment:             "NEKIRO",
+		NacosServiceEnvironment:           "runtime-b",
+		NacosClusterEnvironment:           "DEFAULT",
+		NacosAdvertisedIPEnvironment:      "172.28.0.12",
+		NacosAdvertisedPortEnvironment:    "8092",
+		NacosHeartbeatIntervalEnvironment: "2000",
+		NacosRequestTimeoutEnvironment:    "1000",
+		NacosAuthModeEnvironment:          NacosAuthNone,
+	}
+}
+
+func TestLoadRegistrationConfigRequiresExplicitModeAndNacosTuple(t *testing.T) {
+	disabled, err := LoadRegistrationConfig(runtimeBLookup(map[string]string{RegistrationModeEnvironment: RegistrationModeDisabled}), "runtime-b-primary")
+	if err != nil || disabled.Mode != RegistrationModeDisabled {
+		t.Fatalf("disabled registration=%#v error=%v", disabled, err)
+	}
+	configured, err := LoadRegistrationConfig(runtimeBLookup(validNacosRegistrationEnvironment()), "runtime-b-directory")
+	if err != nil || configured.ServiceName != "runtime-b" || configured.AdvertisedIP != "172.28.0.12" || configured.AdvertisedPort != 8092 {
+		t.Fatalf("Nacos registration=%#v error=%v", configured, err)
+	}
+	for name := range validNacosRegistrationEnvironment() {
+		invalid := validNacosRegistrationEnvironment()
+		delete(invalid, name)
+		if _, err := LoadRegistrationConfig(runtimeBLookup(invalid), "runtime-b-directory"); err == nil {
+			t.Errorf("missing %s was accepted", name)
+		}
+	}
+	if _, err := LoadRegistrationConfig(runtimeBLookup(map[string]string{}), "runtime-b-primary"); err == nil {
+		t.Fatal("missing registration mode was accepted")
+	}
+	if _, err := LoadRegistrationConfig(runtimeBLookup(map[string]string{RegistrationModeEnvironment: RegistrationModeDisabled, NacosServiceEnvironment: "unexpected"}), "runtime-b-primary"); err == nil {
+		t.Fatal("disabled registration accepted Nacos settings")
+	}
+}
+
+func TestLoadRegistrationConfigRejectsInvalidNacosSettings(t *testing.T) {
+	for name, test := range map[string]struct{ key, value string }{
+		"origin":    {NacosAPIOriginEnvironment, "http://nacos:8848"},
+		"namespace": {NacosNamespaceEnvironment, "not safe"},
+		"IP":        {NacosAdvertisedIPEnvironment, "runtime-b"},
+		"port":      {NacosAdvertisedPortEnvironment, "0"},
+		"heartbeat": {NacosHeartbeatIntervalEnvironment, "99"},
+		"timeout":   {NacosRequestTimeoutEnvironment, "60001"},
+		"auth":      {NacosAuthModeEnvironment, "implicit"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			environment := validNacosRegistrationEnvironment()
+			environment[test.key] = test.value
+			if _, err := LoadRegistrationConfig(runtimeBLookup(environment), "runtime-b-directory"); err == nil {
+				t.Fatalf("invalid %s=%q was accepted", test.key, test.value)
+			}
+		})
+	}
+}
+
 func runtimeBLookup(values map[string]string) func(string) (string, bool) {
 	return func(name string) (string, bool) {
 		value, exists := values[name]

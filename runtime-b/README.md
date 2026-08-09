@@ -27,6 +27,20 @@ NEKIRO_AGENT_ROUTER_ISSUER
 NEKIRO_AGENT_ROUTER_AUDIENCE
 NEKIRO_AGENT_ROUTER_KEY_ID
 NEKIRO_AGENT_ROUTER_PUBLIC_KEY_BASE64URL
+# Explicit registration lifecycle: set mode to `disabled` for a static sample,
+# or set mode to `nacos` and provide every Nacos variable below.
+RUNTIME_B_REGISTRATION_MODE
+RUNTIME_B_NACOS_API_ORIGIN
+RUNTIME_B_NACOS_NAMESPACE_ID
+RUNTIME_B_NACOS_GROUP_NAME
+RUNTIME_B_NACOS_SERVICE_NAME
+RUNTIME_B_NACOS_CLUSTER_NAME
+RUNTIME_B_NACOS_ADVERTISED_IP
+RUNTIME_B_NACOS_ADVERTISED_PORT
+RUNTIME_B_NACOS_HEARTBEAT_INTERVAL_MS
+RUNTIME_B_NACOS_REQUEST_TIMEOUT_MS
+RUNTIME_B_NACOS_AUTH_MODE
+RUNTIME_B_NACOS_ACCESS_TOKEN
 ```
 
 All values are required and validated. Credentials have no default and must
@@ -35,6 +49,13 @@ not be logged, trimmed, returned in A2A payloads, or stored in platform facts.
 the sample's JSON and SSE results so Stack acceptance can prove which replica
 handled an Invocation. It does not change the Agent ID, Release identity,
 Router credential audience, or nested-call authorization.
+
+With `nacos` registration, Runtime B registers its ephemeral instance before
+serving, sends one heartbeat per configured interval, and deregisters during
+shutdown. A failed initial registration fails startup. A failed heartbeat
+marks `/readyz` as `503` and stops serving; there is no retry or alternate
+Nacos endpoint. `RUNTIME_B_NACOS_ACCESS_TOKEN` is required only for
+`access_token` mode and is never logged.
 
 ## Test Runtime B
 

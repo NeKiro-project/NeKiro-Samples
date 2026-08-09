@@ -8,6 +8,7 @@ func validEnvironment() map[string]string {
 	return map[string]string{
 		ListenAddressEnvironment:                   "127.0.0.1:4103",
 		AgentIDEnvironment:                         "agent-runtime-a",
+		InstanceIDEnvironment:                      "runtime-a-primary",
 		RouterEnvironment:                          "http://127.0.0.1:4101",
 		RouterTokenEnvironment:                     "opaque-token",
 		TargetAgentEnvironment:                     "agent-runtime-b",
@@ -33,7 +34,7 @@ func TestLoadConfigRequiresAndValidatesAllSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	if config.AgentID != "agent-runtime-a" || config.TargetAgentID != "agent-runtime-b" || config.ResponseLimit != 1048576 || config.EventLimit != 1048576 {
+	if config.AgentID != "agent-runtime-a" || config.InstanceID != "runtime-a-primary" || config.TargetAgentID != "agent-runtime-b" || config.ResponseLimit != 1048576 || config.EventLimit != 1048576 {
 		t.Fatalf("LoadConfig() = %+v", config)
 	}
 

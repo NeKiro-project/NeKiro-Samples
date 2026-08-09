@@ -15,6 +15,7 @@ import (
 const (
 	ListenAddressEnvironment = "RUNTIME_A_LISTEN_ADDR"
 	AgentIDEnvironment       = "RUNTIME_A_AGENT_ID"
+	InstanceIDEnvironment    = "RUNTIME_A_INSTANCE_ID"
 	RouterEnvironment        = "RUNTIME_A_ROUTER_URL"
 	RouterTokenEnvironment   = "RUNTIME_A_ROUTER_TOKEN"
 	TargetAgentEnvironment   = "RUNTIME_A_TARGET_AGENT_ID"
@@ -30,6 +31,7 @@ var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`
 type Config struct {
 	ListenAddress string
 	AgentID       string
+	InstanceID    string
 	RouterURL     string
 	RouterToken   string
 	TargetAgentID string
@@ -49,6 +51,10 @@ func LoadConfig(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, err
 	}
 	agentID, err := requiredIdentifier(lookup, AgentIDEnvironment)
+	if err != nil {
+		return Config{}, err
+	}
+	instanceID, err := requiredIdentifier(lookup, InstanceIDEnvironment)
 	if err != nil {
 		return Config{}, err
 	}
@@ -86,6 +92,7 @@ func LoadConfig(lookup func(string) (string, bool)) (Config, error) {
 	config := Config{
 		ListenAddress: listenAddress,
 		AgentID:       agentID,
+		InstanceID:    instanceID,
 		RouterURL:     routerURL,
 		RouterToken:   routerToken,
 		TargetAgentID: targetAgentID,
@@ -114,6 +121,9 @@ func (config Config) Validate() error {
 		return err
 	}
 	if err := validateIdentifierValue(AgentIDEnvironment, config.AgentID); err != nil {
+		return err
+	}
+	if err := validateIdentifierValue(InstanceIDEnvironment, config.InstanceID); err != nil {
 		return err
 	}
 	if err := validateRequiredValue(RouterEnvironment, config.RouterURL); err != nil {

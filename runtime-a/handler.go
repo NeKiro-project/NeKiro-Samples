@@ -23,6 +23,11 @@ type Handler struct {
 	runtime *runtimeEngine
 }
 
+type Readiness interface{ Ready() bool }
+type staticReadiness bool
+
+func (value staticReadiness) Ready() bool { return bool(value) }
+
 var _ a2asrv.RequestHandler = (*Handler)(nil)
 
 // NewHandler creates a Runtime A handler with the given HTTP transport.
@@ -54,8 +59,15 @@ func newHandlerWithInvoker(config Config, invoker nestedInvoker) (*Handler, erro
 
 // NewHTTPHandler exposes only the active JSON-RPC A2A boundary.
 func NewHTTPHandler(handler *Handler) http.Handler {
+	return NewHTTPHandlerWithReadiness(handler, staticReadiness(true))
+}
+
+func NewHTTPHandlerWithReadiness(handler *Handler, readiness Readiness) http.Handler {
 	if handler == nil {
 		panic("runtime-a handler is required")
+	}
+	if readiness == nil {
+		panic("runtime-a readiness is required")
 	}
 	authentication, err := routerauth.NewMiddleware(handler.config.RouterAuth, time.Now)
 	if err != nil {
@@ -64,6 +76,10 @@ func NewHTTPHandler(handler *Handler) http.Handler {
 	jsonRPCHandler := a2asrv.NewJSONRPCHandler(handler)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /readyz", func(writer http.ResponseWriter, _ *http.Request) {
+		if !readiness.Ready() {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		writer.WriteHeader(http.StatusOK)
 	})
 	mux.Handle("/", authentication.Handler(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
