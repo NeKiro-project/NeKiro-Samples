@@ -270,12 +270,16 @@ func newA2AClient(t *testing.T, server *httptest.Server, interceptors []a2aclien
 }
 
 func httpHandler(t *testing.T, handler *Handler) http.Handler {
+	return httpHandlerWithReadiness(t, handler, staticReadiness(true))
+}
+
+func httpHandlerWithReadiness(t *testing.T, handler *Handler, readiness Readiness) http.Handler {
 	t.Helper()
 	publicKey, err := base64.RawURLEncoding.DecodeString("O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik")
 	if err != nil {
 		t.Fatal(err)
 	}
-	authentication, err := NewHTTPHandlerWithAuth(handler, routerauth.Config{Issuer: "https://a2a-router.nekiro.test", Audience: "http://runtime-b:8092", KeyID: "router-key-1", PublicKey: publicKey})
+	authentication, err := NewHTTPHandlerWithAuthAndReadiness(handler, routerauth.Config{Issuer: "https://a2a-router.nekiro.test", Audience: "http://runtime-b:8092", KeyID: "router-key-1", PublicKey: publicKey}, readiness)
 	if err != nil {
 		t.Fatal(err)
 	}

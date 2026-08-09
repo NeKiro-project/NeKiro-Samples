@@ -14,9 +14,24 @@ import (
 
 const ListenAddressEnvironment = "RUNTIME_B_LISTEN_ADDR"
 
+type Readiness interface {
+	Ready() bool
+}
+
+type staticReadiness bool
+
+func (ready staticReadiness) Ready() bool { return bool(ready) }
+
 func NewHTTPHandlerWithAuth(handler *Handler, authenticationConfig routerauth.Config) (http.Handler, error) {
+	return NewHTTPHandlerWithAuthAndReadiness(handler, authenticationConfig, staticReadiness(true))
+}
+
+func NewHTTPHandlerWithAuthAndReadiness(handler *Handler, authenticationConfig routerauth.Config, readiness Readiness) (http.Handler, error) {
 	if handler == nil {
 		return nil, fmt.Errorf("runtime-b handler is required")
+	}
+	if readiness == nil {
+		return nil, fmt.Errorf("runtime-b readiness is required")
 	}
 	authentication, err := routerauth.NewMiddleware(authenticationConfig, time.Now)
 	if err != nil {
@@ -25,6 +40,10 @@ func NewHTTPHandlerWithAuth(handler *Handler, authenticationConfig routerauth.Co
 	jsonRPCHandler := a2asrv.NewJSONRPCHandler(handler)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /readyz", func(writer http.ResponseWriter, _ *http.Request) {
+		if !readiness.Ready() {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		writer.WriteHeader(http.StatusOK)
 	})
 	mux.Handle("/unavailable", authentication.Handler(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
