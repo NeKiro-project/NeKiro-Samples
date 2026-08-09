@@ -5,6 +5,7 @@ import "testing"
 func validRuntimeBEnvironment() map[string]string {
 	return map[string]string{
 		AgentIDEnvironment:                         "agent-runtime-b",
+		InstanceIDEnvironment:                      "runtime-b-primary",
 		RouterEnvironment:                          "http://127.0.0.1:4101",
 		RouterTokenEnvironment:                     "opaque-token",
 		TargetAgentEnvironment:                     "agent-runtime-a",
@@ -30,7 +31,7 @@ func TestLoadConfigRequiresAndValidatesAllSettings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig() error = %v", err)
 	}
-	if config.AgentID != "agent-runtime-b" || config.TargetAgentID != "agent-runtime-a" || config.ResponseLimit != 1048576 || config.EventLimit != 1048576 {
+	if config.AgentID != "agent-runtime-b" || config.InstanceID != "runtime-b-primary" || config.TargetAgentID != "agent-runtime-a" || config.ResponseLimit != 1048576 || config.EventLimit != 1048576 {
 		t.Fatalf("LoadConfig() = %+v", config)
 	}
 

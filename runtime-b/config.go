@@ -13,6 +13,7 @@ import (
 
 const (
 	AgentIDEnvironment       = "RUNTIME_B_AGENT_ID"
+	InstanceIDEnvironment    = "RUNTIME_B_INSTANCE_ID"
 	RouterEnvironment        = "RUNTIME_B_ROUTER_URL"
 	RouterTokenEnvironment   = "RUNTIME_B_ROUTER_TOKEN"
 	TargetAgentEnvironment   = "RUNTIME_B_TARGET_AGENT_ID"
@@ -27,6 +28,7 @@ var runtimeBIdentifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{
 // nested-call fixture. It does not contain a direct target endpoint.
 type Config struct {
 	AgentID       string
+	InstanceID    string
 	RouterURL     string
 	RouterToken   string
 	TargetAgentID string
@@ -39,6 +41,10 @@ type Config struct {
 // LoadConfig reads and validates every required Runtime B caller setting.
 func LoadConfig(lookup func(string) (string, bool)) (Config, error) {
 	agentID, err := requiredIdentifier(lookup, AgentIDEnvironment)
+	if err != nil {
+		return Config{}, err
+	}
+	instanceID, err := requiredIdentifier(lookup, InstanceIDEnvironment)
 	if err != nil {
 		return Config{}, err
 	}
@@ -75,6 +81,7 @@ func LoadConfig(lookup func(string) (string, bool)) (Config, error) {
 	}
 	config := Config{
 		AgentID:       agentID,
+		InstanceID:    instanceID,
 		RouterURL:     routerURL,
 		RouterToken:   routerToken,
 		TargetAgentID: targetAgentID,
@@ -91,6 +98,9 @@ func LoadConfig(lookup func(string) (string, bool)) (Config, error) {
 
 func (config Config) Validate() error {
 	if err := validateIdentifierValue(AgentIDEnvironment, config.AgentID); err != nil {
+		return err
+	}
+	if err := validateIdentifierValue(InstanceIDEnvironment, config.InstanceID); err != nil {
 		return err
 	}
 	if err := validateRequiredValue(RouterEnvironment, config.RouterURL); err != nil {

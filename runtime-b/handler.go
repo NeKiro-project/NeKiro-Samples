@@ -18,16 +18,17 @@ type runtimeTask struct {
 
 // Handler implements the active A2A Profile for the deterministic Runtime B sample.
 type Handler struct {
-	mu      sync.RWMutex
-	tasks   map[a2a.TaskID]*runtimeTask
-	agentID string
-	nested  *nestedService
+	mu         sync.RWMutex
+	tasks      map[a2a.TaskID]*runtimeTask
+	agentID    string
+	instanceID string
+	nested     *nestedService
 }
 
 var _ a2asrv.RequestHandler = (*Handler)(nil)
 
 func NewHandler() *Handler {
-	return &Handler{tasks: make(map[a2a.TaskID]*runtimeTask)}
+	return &Handler{tasks: make(map[a2a.TaskID]*runtimeTask), instanceID: "runtime-b"}
 }
 
 // NewConfiguredHandler creates the production Runtime B handler with one
@@ -44,7 +45,7 @@ func NewConfiguredHandler(config Config, doer agentsdk.HTTPDoer) (*Handler, erro
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{tasks: make(map[a2a.TaskID]*runtimeTask), agentID: config.AgentID, nested: nested}, nil
+	return &Handler{tasks: make(map[a2a.TaskID]*runtimeTask), agentID: config.AgentID, instanceID: config.InstanceID, nested: nested}, nil
 }
 
 func (h *Handler) OnSendMessage(ctx context.Context, params *a2a.MessageSendParams) (a2a.SendMessageResult, error) {
@@ -54,7 +55,7 @@ func (h *Handler) OnSendMessage(ctx context.Context, params *a2a.MessageSendPara
 	}
 	switch request.kind {
 	case fixtureSuccess:
-		return successMessage(params.Message, request), nil
+		return h.successMessage(params.Message, request), nil
 	case fixtureNested:
 		if h.nested == nil {
 			return nil, invalidParams("nested fixture is not configured")
@@ -129,11 +130,11 @@ func (h *Handler) OnSendMessageStream(ctx context.Context, params *a2a.MessageSe
 			return
 		}
 		if request.kind == fixtureInterrupted {
-			if !yield(streamMessage(task.task, request), nil) {
+			if !yield(h.streamMessage(task.task, request), nil) {
 				return
 			}
 			artifactID := a2a.ArtifactID(derivedID("artifact", params.Message.ID))
-			if !yield(artifactEvent(task.task, artifactID, request, false, false, 0), nil) {
+			if !yield(h.artifactEvent(task.task, artifactID, request, false, false, 0), nil) {
 				return
 			}
 			return
@@ -144,7 +145,7 @@ func (h *Handler) OnSendMessageStream(ctx context.Context, params *a2a.MessageSe
 			yield(statusEvent(task.task, a2a.TaskStateCanceled, true), nil)
 			return
 		}
-		if !yield(streamMessage(task.task, request), nil) {
+		if !yield(h.streamMessage(task.task, request), nil) {
 			return
 		}
 		if taskCanceled(task) {
@@ -153,7 +154,7 @@ func (h *Handler) OnSendMessageStream(ctx context.Context, params *a2a.MessageSe
 			return
 		}
 		artifactID := a2a.ArtifactID(derivedID("artifact", params.Message.ID))
-		if !yield(artifactEvent(task.task, artifactID, request, false, false, 0), nil) {
+		if !yield(h.artifactEvent(task.task, artifactID, request, false, false, 0), nil) {
 			return
 		}
 		if taskCanceled(task) {
@@ -161,7 +162,7 @@ func (h *Handler) OnSendMessageStream(ctx context.Context, params *a2a.MessageSe
 			yield(statusEvent(task.task, a2a.TaskStateCanceled, true), nil)
 			return
 		}
-		if !yield(artifactEvent(task.task, artifactID, request, true, true, 1), nil) {
+		if !yield(h.artifactEvent(task.task, artifactID, request, true, true, 1), nil) {
 			return
 		}
 		state, err := h.completeTask(task.task.ID)
@@ -276,7 +277,7 @@ func (h *Handler) removeWorkingTask(taskID a2a.TaskID) {
 	}
 }
 
-func successMessage(input *a2a.Message, request fixtureRequest) *a2a.Message {
+func (h *Handler) successMessage(input *a2a.Message, request fixtureRequest) *a2a.Message {
 	contextID := input.ContextID
 	if contextID == "" {
 		contextID = derivedID("context", input.ID)
@@ -286,29 +287,31 @@ func successMessage(input *a2a.Message, request fixtureRequest) *a2a.Message {
 		ContextID: contextID,
 		Role:      a2a.MessageRoleAgent,
 		Parts: []a2a.Part{a2a.DataPart{Data: map[string]any{
-			"agent":   "runtime-b",
-			"fixture": string(request.kind),
-			"value":   request.value,
+			"agent":      "runtime-b",
+			"instanceId": h.instanceID,
+			"fixture":    string(request.kind),
+			"value":      request.value,
 		}}},
 	}
 }
 
-func streamMessage(task *a2a.Task, request fixtureRequest) *a2a.Message {
+func (h *Handler) streamMessage(task *a2a.Task, request fixtureRequest) *a2a.Message {
 	return &a2a.Message{
 		ID:        derivedID("stream-message", string(task.ID)),
 		TaskID:    task.ID,
 		ContextID: task.ContextID,
 		Role:      a2a.MessageRoleAgent,
 		Parts: []a2a.Part{a2a.DataPart{Data: map[string]any{
-			"agent":   "runtime-b",
-			"fixture": string(request.kind),
-			"phase":   "working",
-			"value":   request.value,
+			"agent":      "runtime-b",
+			"instanceId": h.instanceID,
+			"fixture":    string(request.kind),
+			"phase":      "working",
+			"value":      request.value,
 		}}},
 	}
 }
 
-func artifactEvent(task *a2a.Task, artifactID a2a.ArtifactID, request fixtureRequest, appendPart, last bool, sequence int) *a2a.TaskArtifactUpdateEvent {
+func (h *Handler) artifactEvent(task *a2a.Task, artifactID a2a.ArtifactID, request fixtureRequest, appendPart, last bool, sequence int) *a2a.TaskArtifactUpdateEvent {
 	return &a2a.TaskArtifactUpdateEvent{
 		TaskID:    task.ID,
 		ContextID: task.ContextID,
@@ -318,10 +321,11 @@ func artifactEvent(task *a2a.Task, artifactID a2a.ArtifactID, request fixtureReq
 			ID:   artifactID,
 			Name: "runtime-b-result",
 			Parts: []a2a.Part{a2a.DataPart{Data: map[string]any{
-				"agent":    "runtime-b",
-				"fixture":  string(request.kind),
-				"sequence": sequence,
-				"value":    request.value,
+				"agent":      "runtime-b",
+				"instanceId": h.instanceID,
+				"fixture":    string(request.kind),
+				"sequence":   sequence,
+				"value":      request.value,
 			}}},
 		},
 	}
