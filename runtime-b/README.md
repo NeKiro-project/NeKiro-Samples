@@ -50,6 +50,10 @@ RUNTIME_B_NACOS_IP_DELETE_TIMEOUT_MS
 RUNTIME_B_NACOS_REQUEST_TIMEOUT_MS
 RUNTIME_B_NACOS_AUTH_MODE
 RUNTIME_B_NACOS_ACCESS_TOKEN
+RUNTIME_B_NACOS_TLS_CA_FILE
+RUNTIME_B_NACOS_TLS_SERVER_NAME
+RUNTIME_B_NACOS_TLS_CLIENT_CERT_FILE
+RUNTIME_B_NACOS_TLS_CLIENT_KEY_FILE
 ```
 
 All values are required and validated. Credentials have no default and must
@@ -68,6 +72,15 @@ the lease, makes `/readyz` return `503`, and stops serving; there is no retry,
 alternate Nacos endpoint, stale lease, or Release fallback.
 `RUNTIME_B_NACOS_ACCESS_TOKEN` is required only for `access_token` mode and is
 never logged.
+
+The Nacos API origin scheme is the explicit transport boundary. `http` permits
+controlled plaintext only when all four TLS fields are absent. `https`
+requires a private CA file and exact TLS server name; a client certificate and
+key are optional only as a complete mTLS pair. The client uses TLS 1.2 or
+later, never uses system roots, proxy discovery, insecure verification,
+redirects, or downgrade, and reads each TLS file from a clean absolute regular
+path with a 1 MiB limit. Validation and startup failures never expose a file
+path, PEM block, private key, or file content.
 
 ## Test Runtime B
 
