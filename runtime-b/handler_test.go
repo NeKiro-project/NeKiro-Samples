@@ -189,6 +189,63 @@ func TestHandlerHoldStreamCancelsSameTask(t *testing.T) {
 	}
 }
 
+func TestHandlerHoldTaskSurvivesDisconnectForOneObservedCancel(t *testing.T) {
+	handler := NewHandler()
+	ctx, disconnect := context.WithCancel(t.Context())
+	events := make(chan a2a.Event, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for event, err := range handler.OnSendMessageStream(ctx, fixtureParams("hold-observed", fixtureHold, "marker-a")) {
+			if err != nil {
+				t.Errorf("hold stream: %v", err)
+				return
+			}
+			events <- event
+		}
+	}()
+	task := requireTaskEvent(t, receiveEvent(t, events))
+	disconnect()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("hold stream did not stop after disconnect")
+	}
+
+	canceled, err := handler.OnCancelTask(t.Context(), &a2a.TaskIDParams{ID: task.ID})
+	if err != nil || canceled.Status.State != a2a.TaskStateCanceled {
+		t.Fatalf("cancel disconnected task = (%#v, %v)", canceled, err)
+	}
+	assertCancelObservation(t, handler, "marker-a", true, 1)
+	assertCancelObservation(t, handler, "marker-a", false, 0)
+	if _, err := handler.OnCancelTask(t.Context(), &a2a.TaskIDParams{ID: task.ID}); !errors.Is(err, a2a.ErrTaskNotCancelable) {
+		t.Fatalf("second cancel = %v", err)
+	}
+	assertCancelObservation(t, handler, "marker-a", true, 1)
+}
+
+func TestHandlerCancelObservationRejectsInvalidMarker(t *testing.T) {
+	result, err := NewHandler().OnSendMessage(t.Context(), fixtureParams("cancel-observation", fixtureCancelObserved, map[string]any{"marker": "a"}))
+	if result != nil || !errors.Is(err, a2a.ErrInvalidParams) {
+		t.Fatalf("invalid marker result = (%#v, %v)", result, err)
+	}
+}
+
+func assertCancelObservation(t *testing.T, handler *Handler, marker string, canceled bool, count int) {
+	t.Helper()
+	result, err := handler.OnSendMessage(t.Context(), fixtureParams("observe-"+marker, fixtureCancelObserved, marker))
+	if err != nil {
+		t.Fatal(err)
+	}
+	part := requireDataPart(t, requireMessage(t, result).Parts[0])
+	if part.Data["fixture"] != string(fixtureCancelObserved) || part.Data["canceled"] != canceled || part.Data["cancelCount"] != count {
+		t.Fatalf("cancel observation = %#v", part.Data)
+	}
+	if _, leaked := part.Data["value"]; leaked {
+		t.Fatalf("cancel observation leaked marker: %#v", part.Data)
+	}
+}
+
 func TestHandlerStreamSuccessStopsContentWhenCancelWins(t *testing.T) {
 	for _, cancelAfter := range []int{1, 2, 3, 4} {
 		t.Run(fmt.Sprintf("after-event-%d", cancelAfter), func(t *testing.T) {
@@ -240,8 +297,12 @@ func TestHandlerHoldStreamContextTerminationDoesNotCreateTerminal(t *testing.T) 
 		t.Fatal("context-terminated stream did not stop")
 	}
 	historyLength := 1
-	if _, err := handler.OnGetTask(t.Context(), &a2a.TaskQueryParams{ID: working.ID, HistoryLength: &historyLength}); !errors.Is(err, a2a.ErrTaskNotFound) {
-		t.Fatalf("context-terminated task = %v, want task not found", err)
+	stored, err := handler.OnGetTask(t.Context(), &a2a.TaskQueryParams{ID: working.ID, HistoryLength: &historyLength})
+	if err != nil || stored.Status.State != a2a.TaskStateWorking {
+		t.Fatalf("context-terminated task = (%#v, %v), want working task", stored, err)
+	}
+	if _, err := handler.OnCancelTask(t.Context(), &a2a.TaskIDParams{ID: working.ID}); err != nil {
+		t.Fatalf("cancel context-terminated task: %v", err)
 	}
 }
 

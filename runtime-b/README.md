@@ -84,8 +84,15 @@ Success means every package prints `ok`, the race detector and vet exit with
 code `0`, and the image builds. Required tests prove official A2A client
 interoperability, strict one-line SSE frames, deterministic message and stream
 results, task history bounds, same-task cancellation, concurrent identity
-isolation, Router-only nested lineage, and a readiness request that creates no
-task state.
+isolation, Router-only nested lineage, Provider-side cancellation observation,
+and a readiness request that creates no task state. The deterministic
+`cancel-observed` fixture consumes a non-sensitive marker and returns only a
+boolean and Provider-observed request count, including rejected duplicate
+attempts. Task access is scoped by the authenticated Workspace, exact Release
+provenance, capability, and Invocation; observations use the same scope without
+the Invocation so a later managed call can read them. The fixture exists so
+Stack can prove exactly one Router `tasks/cancel` reached this Provider without
+exposing a direct Provider inspection path.
 
 ## Run Runtime B
 
