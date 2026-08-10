@@ -156,6 +156,87 @@ func TestOfficialA2AClientAllActiveOperations(t *testing.T) {
 	}
 }
 
+func TestTaskAndCancellationObservationAreWorkspaceScoped(t *testing.T) {
+	handler := NewHandler()
+	server := httptest.NewServer(httpHandler(t, handler))
+	t.Cleanup(server.Close)
+	owner := newA2AClient(t, server, []a2aclient.CallInterceptor{testCredentialInterceptor{workspaceID: "workspace-a", invocationID: "inv-owner"}})
+	otherInvocation := newA2AClient(t, server, []a2aclient.CallInterceptor{testCredentialInterceptor{workspaceID: "workspace-a", invocationID: "inv-observer"}})
+	otherRelease := newA2AClient(t, server, []a2aclient.CallInterceptor{testCredentialInterceptor{workspaceID: "workspace-a", invocationID: "inv-other-release", releaseID: "release-other"}})
+	foreign := newA2AClient(t, server, []a2aclient.CallInterceptor{testCredentialInterceptor{workspaceID: "workspace-b", invocationID: "inv-foreign"}})
+
+	events := make(chan a2a.Event, 2)
+	streamErrors := make(chan error, 1)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for event, err := range owner.SendStreamingMessage(t.Context(), fixtureParams("scoped-hold", fixtureHold, "scoped-marker")) {
+			if err != nil {
+				streamErrors <- err
+				return
+			}
+			events <- event
+		}
+	}()
+	task := requireTaskEvent(t, receiveEvent(t, events))
+	historyLength := 1
+	if _, err := foreign.GetTask(t.Context(), &a2a.TaskQueryParams{ID: task.ID, HistoryLength: &historyLength}); !errors.Is(err, a2a.ErrTaskNotFound) {
+		t.Fatalf("foreign tasks/get = %v", err)
+	}
+	if _, err := foreign.CancelTask(t.Context(), &a2a.TaskIDParams{ID: task.ID}); !errors.Is(err, a2a.ErrTaskNotFound) {
+		t.Fatalf("foreign tasks/cancel = %v", err)
+	}
+	if _, err := otherInvocation.GetTask(t.Context(), &a2a.TaskQueryParams{ID: task.ID, HistoryLength: &historyLength}); !errors.Is(err, a2a.ErrTaskNotFound) {
+		t.Fatalf("other Invocation tasks/get = %v", err)
+	}
+	if _, err := otherInvocation.CancelTask(t.Context(), &a2a.TaskIDParams{ID: task.ID}); !errors.Is(err, a2a.ErrTaskNotFound) {
+		t.Fatalf("other Invocation tasks/cancel = %v", err)
+	}
+	if _, err := otherRelease.GetTask(t.Context(), &a2a.TaskQueryParams{ID: task.ID, HistoryLength: &historyLength}); !errors.Is(err, a2a.ErrTaskNotFound) {
+		t.Fatalf("other Release tasks/get = %v", err)
+	}
+	if _, err := otherRelease.CancelTask(t.Context(), &a2a.TaskIDParams{ID: task.ID}); !errors.Is(err, a2a.ErrTaskNotFound) {
+		t.Fatalf("other Release tasks/cancel = %v", err)
+	}
+	if _, err := owner.CancelTask(t.Context(), &a2a.TaskIDParams{ID: task.ID}); err != nil {
+		t.Fatalf("owner tasks/cancel: %v", err)
+	}
+	if terminal, ok := receiveEvent(t, events).(*a2a.TaskStatusUpdateEvent); !ok || !terminal.Final || terminal.Status.State != a2a.TaskStateCanceled {
+		t.Fatalf("owner cancellation terminal = %#v", terminal)
+	}
+	select {
+	case err := <-streamErrors:
+		t.Fatalf("scoped hold stream: %v", err)
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("scoped hold stream did not stop")
+	}
+
+	foreignObservation, err := foreign.SendMessage(t.Context(), fixtureParams("foreign-observation", fixtureCancelObserved, "scoped-marker"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertServerCancelObservation(t, foreignObservation, false, float64(0), "scoped-marker")
+	otherReleaseObservation, err := otherRelease.SendMessage(t.Context(), fixtureParams("other-release-observation", fixtureCancelObserved, "scoped-marker"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertServerCancelObservation(t, otherReleaseObservation, false, float64(0), "scoped-marker")
+	ownerObservation, err := otherInvocation.SendMessage(t.Context(), fixtureParams("owner-observation", fixtureCancelObserved, "scoped-marker"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertServerCancelObservation(t, ownerObservation, true, float64(1), "scoped-marker")
+}
+
+func assertServerCancelObservation(t *testing.T, result a2a.SendMessageResult, canceled bool, count float64, marker string) {
+	t.Helper()
+	part := requireDataPart(t, requireMessage(t, result).Parts[0])
+	if part.Data["canceled"] != canceled || part.Data["cancelCount"] != count || strings.Contains(fmt.Sprint(part.Data), marker) {
+		t.Fatalf("cancel observation = %#v", part.Data)
+	}
+}
+
 func TestOfficialServerReceivesAllProfileContextHeaders(t *testing.T) {
 	profile, err := contracts.LoadA2AProfile()
 	if err != nil {
@@ -286,10 +367,26 @@ func httpHandlerWithReadiness(t *testing.T, handler *Handler, readiness Readines
 	return authentication
 }
 
-type testCredentialInterceptor struct{}
+type testCredentialInterceptor struct {
+	workspaceID  string
+	invocationID string
+	releaseID    string
+}
 
-func (testCredentialInterceptor) Before(ctx context.Context, request *a2aclient.Request) (context.Context, error) {
-	setTestMeta(request.Meta)
+func (interceptor testCredentialInterceptor) Before(ctx context.Context, request *a2aclient.Request) (context.Context, error) {
+	workspaceID := interceptor.workspaceID
+	if workspaceID == "" {
+		workspaceID = "workspace-a"
+	}
+	invocationID := interceptor.invocationID
+	if invocationID == "" {
+		invocationID = "inv_runtime_b"
+	}
+	releaseID := interceptor.releaseID
+	if releaseID == "" {
+		releaseID = "release-b"
+	}
+	setTestMetaForContext(request.Meta, workspaceID, invocationID, releaseID)
 	return ctx, nil
 }
 
@@ -298,12 +395,16 @@ func (testCredentialInterceptor) After(context.Context, *a2aclient.Response) err
 var testCredentialSequence atomic.Uint64
 
 func setTestMeta(meta a2aclient.CallMeta) {
+	setTestMetaForContext(meta, "workspace-a", "inv_runtime_b", "release-b")
+}
+
+func setTestMetaForContext(meta a2aclient.CallMeta, workspaceID, invocationID, releaseID string) {
 	sequence := testCredentialSequence.Add(1)
 	now := time.Now().Unix()
 	claims := jwt.MapClaims{
 		"iss": "https://a2a-router.nekiro.test", "aud": []string{"http://runtime-b:8092"}, "exp": now + 30, "iat": now, "jti": fmt.Sprintf("rtj_runtime_b_%d", sequence),
-		"workspaceId": "workspace-a", "agentId": "runtime-b", "agentVersion": "1.0.0", "releaseId": "release-b", "cardDigest": strings.Repeat("b", 64),
-		"capability": "runtime.echo", "invocationId": "inv_runtime_b", "rootTaskId": "task-runtime-b", "traceId": "trace-runtime-b",
+		"workspaceId": workspaceID, "agentId": "runtime-b", "agentVersion": "1.0.0", "releaseId": releaseID, "cardDigest": strings.Repeat("b", 64),
+		"capability": "runtime.echo", "invocationId": invocationID, "rootTaskId": "task-runtime-b", "traceId": "trace-runtime-b",
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
 	token.Header["typ"] = "nekiro-router+jwt"
@@ -313,13 +414,13 @@ func setTestMeta(meta a2aclient.CallMeta) {
 		panic(err)
 	}
 	meta.Append("Authorization", "Bearer "+serialized)
-	meta.Append("x-nek-workspace-id", "workspace-a")
+	meta.Append("x-nek-workspace-id", workspaceID)
 	meta.Append("x-nek-target-agent-id", "runtime-b")
 	meta.Append("x-nek-agent-card-version", "1.0.0")
-	meta.Append("x-nek-agent-release-id", "release-b")
+	meta.Append("x-nek-agent-release-id", releaseID)
 	meta.Append("x-nek-agent-card-digest", strings.Repeat("b", 64))
 	meta.Append("x-nek-capability", "runtime.echo")
-	meta.Append("x-nek-invocation-id", "inv_runtime_b")
+	meta.Append("x-nek-invocation-id", invocationID)
 	meta.Append("x-nek-root-task-id", "task-runtime-b")
 	meta.Append("x-nek-trace-id", "trace-runtime-b")
 }

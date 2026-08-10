@@ -7,28 +7,32 @@ import (
 	"sync"
 
 	agentsdk "github.com/NeKiro-project/nekiro-sdk-go/agent"
+	"github.com/NeKiro-project/nekiro-sdk-go/agent/routerauth"
 	"github.com/a2aproject/a2a-go/a2a"
 	"github.com/a2aproject/a2a-go/a2asrv"
 )
 
 type runtimeTask struct {
-	task   *a2a.Task
-	cancel chan struct{}
+	task              *a2a.Task
+	cancel            chan struct{}
+	owner             string
+	cancelObservation string
 }
 
 // Handler implements the active A2A Profile for the deterministic Runtime B sample.
 type Handler struct {
-	mu         sync.RWMutex
-	tasks      map[a2a.TaskID]*runtimeTask
-	agentID    string
-	instanceID string
-	nested     *nestedService
+	mu            sync.RWMutex
+	tasks         map[a2a.TaskID]*runtimeTask
+	cancellations map[string]int
+	agentID       string
+	instanceID    string
+	nested        *nestedService
 }
 
 var _ a2asrv.RequestHandler = (*Handler)(nil)
 
 func NewHandler() *Handler {
-	return &Handler{tasks: make(map[a2a.TaskID]*runtimeTask), instanceID: "runtime-b"}
+	return &Handler{tasks: make(map[a2a.TaskID]*runtimeTask), cancellations: make(map[string]int), instanceID: "runtime-b"}
 }
 
 // NewConfiguredHandler creates the production Runtime B handler with one
@@ -45,7 +49,7 @@ func NewConfiguredHandler(config Config, doer agentsdk.HTTPDoer) (*Handler, erro
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{tasks: make(map[a2a.TaskID]*runtimeTask), agentID: config.AgentID, instanceID: config.InstanceID, nested: nested}, nil
+	return &Handler{tasks: make(map[a2a.TaskID]*runtimeTask), cancellations: make(map[string]int), agentID: config.AgentID, instanceID: config.InstanceID, nested: nested}, nil
 }
 
 func (h *Handler) OnSendMessage(ctx context.Context, params *a2a.MessageSendParams) (a2a.SendMessageResult, error) {
@@ -56,6 +60,12 @@ func (h *Handler) OnSendMessage(ctx context.Context, params *a2a.MessageSendPara
 	switch request.kind {
 	case fixtureSuccess:
 		return h.successMessage(params.Message, request), nil
+	case fixtureCancelObserved:
+		marker, ok := request.value.(string)
+		if !ok || marker == "" {
+			return nil, invalidParams("cancel observation marker must be a non-empty string")
+		}
+		return h.cancelObservationMessage(params.Message, h.takeCancellationObservation(cancellationObservationKey(ctx, marker))), nil
 	case fixtureNested:
 		if h.nested == nil {
 			return nil, invalidParams("nested fixture is not configured")
@@ -104,14 +114,16 @@ func (h *Handler) OnSendMessageStream(ctx context.Context, params *a2a.MessageSe
 			return
 		}
 
-		task, err := h.createWorkingTask(params.Message)
+		task, err := h.createWorkingTask(ctx, params.Message, request)
 		if err != nil {
 			yield(nil, err)
 			return
 		}
 		terminal := false
 		defer func() {
-			if !terminal {
+			// A hold task remains addressable after its stream disconnects so the
+			// Router's single bounded tasks/cancel call can reach the same task.
+			if !terminal && request.kind != fixtureHold {
 				h.removeWorkingTask(task.task.ID)
 			}
 		}()
@@ -175,7 +187,7 @@ func (h *Handler) OnSendMessageStream(ctx context.Context, params *a2a.MessageSe
 	}
 }
 
-func (h *Handler) OnGetTask(_ context.Context, query *a2a.TaskQueryParams) (*a2a.Task, error) {
+func (h *Handler) OnGetTask(ctx context.Context, query *a2a.TaskQueryParams) (*a2a.Task, error) {
 	if query == nil || query.ID == "" {
 		return nil, invalidParams("task id is required")
 	}
@@ -185,7 +197,7 @@ func (h *Handler) OnGetTask(_ context.Context, query *a2a.TaskQueryParams) (*a2a
 
 	h.mu.RLock()
 	stored, exists := h.tasks[query.ID]
-	if !exists {
+	if !exists || stored.owner != taskOwner(ctx) {
 		h.mu.RUnlock()
 		return nil, a2a.ErrTaskNotFound
 	}
@@ -200,15 +212,21 @@ func (h *Handler) OnGetTask(_ context.Context, query *a2a.TaskQueryParams) (*a2a
 	return task, nil
 }
 
-func (h *Handler) OnCancelTask(_ context.Context, params *a2a.TaskIDParams) (*a2a.Task, error) {
+func (h *Handler) OnCancelTask(ctx context.Context, params *a2a.TaskIDParams) (*a2a.Task, error) {
 	if params == nil || params.ID == "" {
 		return nil, invalidParams("task id is required")
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	stored, exists := h.tasks[params.ID]
-	if !exists {
+	if !exists || stored.owner != taskOwner(ctx) {
 		return nil, a2a.ErrTaskNotFound
+	}
+	if stored.cancelObservation != "" {
+		if h.cancellations == nil {
+			h.cancellations = make(map[string]int)
+		}
+		h.cancellations[stored.cancelObservation]++
 	}
 	if stored.task.Status.State != a2a.TaskStateWorking {
 		return nil, a2a.ErrTaskNotCancelable
@@ -218,7 +236,7 @@ func (h *Handler) OnCancelTask(_ context.Context, params *a2a.TaskIDParams) (*a2
 	return cloneTask(stored.task), nil
 }
 
-func (h *Handler) createWorkingTask(message *a2a.Message) (*runtimeTask, error) {
+func (h *Handler) createWorkingTask(ctx context.Context, message *a2a.Message, request fixtureRequest) (*runtimeTask, error) {
 	taskID := a2a.TaskID(derivedID("task", message.ID))
 	contextID := message.ContextID
 	if contextID == "" {
@@ -231,7 +249,12 @@ func (h *Handler) createWorkingTask(message *a2a.Message) (*runtimeTask, error) 
 			Status:    a2a.TaskStatus{State: a2a.TaskStateWorking},
 			History:   []*a2a.Message{cloneMessage(message)},
 		},
-		cancel: make(chan struct{}),
+		cancel: make(chan struct{}), owner: taskOwner(ctx),
+	}
+	if request.kind == fixtureHold {
+		if marker, ok := request.value.(string); ok && marker != "" {
+			stored.cancelObservation = cancellationObservationKey(ctx, marker)
+		}
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -240,6 +263,40 @@ func (h *Handler) createWorkingTask(message *a2a.Message) (*runtimeTask, error) 
 	}
 	h.tasks[taskID] = stored
 	return stored, nil
+}
+
+func cancellationObservationKey(ctx context.Context, marker string) string {
+	owner := observationOwner(ctx)
+	if owner == "" {
+		return marker
+	}
+	return owner + "\x00" + marker
+}
+
+func taskOwner(ctx context.Context) string {
+	owner := observationOwner(ctx)
+	if owner == "" {
+		return ""
+	}
+	claims, _ := routerauth.ClaimsFromContext(ctx)
+	return owner + "\x00" + claims.InvocationID
+}
+
+func observationOwner(ctx context.Context) string {
+	claims, ok := routerauth.ClaimsFromContext(ctx)
+	if !ok {
+		return ""
+	}
+	return claims.WorkspaceID + "\x00" + claims.AgentID + "\x00" + claims.AgentVersion + "\x00" +
+		claims.ReleaseID + "\x00" + claims.CardDigest + "\x00" + claims.Capability
+}
+
+func (h *Handler) takeCancellationObservation(marker string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	count := h.cancellations[marker]
+	delete(h.cancellations, marker)
+	return count
 }
 
 func (h *Handler) completeTask(taskID a2a.TaskID) (a2a.TaskState, error) {
@@ -291,6 +348,20 @@ func (h *Handler) successMessage(input *a2a.Message, request fixtureRequest) *a2
 			"instanceId": h.instanceID,
 			"fixture":    string(request.kind),
 			"value":      request.value,
+		}}},
+	}
+}
+
+func (h *Handler) cancelObservationMessage(input *a2a.Message, count int) *a2a.Message {
+	contextID := input.ContextID
+	if contextID == "" {
+		contextID = derivedID("context", input.ID)
+	}
+	return &a2a.Message{
+		ID: derivedID("message", input.ID), ContextID: contextID, Role: a2a.MessageRoleAgent,
+		Parts: []a2a.Part{a2a.DataPart{Data: map[string]any{
+			"agent": "runtime-b", "instanceId": h.instanceID, "fixture": string(fixtureCancelObserved),
+			"canceled": count > 0, "cancelCount": count,
 		}}},
 	}
 }
