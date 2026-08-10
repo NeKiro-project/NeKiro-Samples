@@ -26,6 +26,16 @@ NEKIRO_AGENT_ROUTER_KEY_ID
 NEKIRO_AGENT_ROUTER_PUBLIC_KEY_BASE64URL
 ```
 
+When `RUNTIME_A_REGISTRATION_MODE=nacos`, the deployment must additionally
+provide the exact target fields `RUNTIME_A_AGENT_CARD_VERSION`,
+`RUNTIME_A_RELEASE_ID`, `RUNTIME_A_CARD_DIGEST`,
+`RUNTIME_A_CANONICAL_ENDPOINT`, and `RUNTIME_A_AUDIENCE`; the Nacos tuple;
+`RUNTIME_A_NACOS_PORT_NAME`, advertised IP/port and weight; explicit heartbeat,
+heartbeat-timeout, IP-delete-timeout, and request-timeout values; and the
+selected authentication mode. Runtime A uses Core's `InstanceRegistrar` and
+`InstanceLease`, fails startup if the initial publish fails, becomes not-ready
+and stops on terminal lease failure, and explicitly deregisters on shutdown.
+
 `NEKIRO_AGENT_CHALLENGE_DIRECTORY` is an absolute, explicitly configured
 directory used only to serve provider-owned one-time HTTP ownership proofs at
 `/.well-known/nekiro/challenges/{challengeId}`. It has no default and is not a
