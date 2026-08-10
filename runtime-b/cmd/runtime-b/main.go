@@ -35,7 +35,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	registrationConfig, err := runtimeb.LoadRegistrationConfig(os.LookupEnv, config.InstanceID)
+	registrationConfig, err := runtimeb.LoadRegistrationConfig(os.LookupEnv, config.AgentID, config.InstanceID)
 	if err != nil {
 		return err
 	}

@@ -3,7 +3,7 @@ module github.com/NeKiro-project/NeKiro-Samples
 go 1.26.0
 
 require (
-	github.com/NeKiro-project/NeKiro v0.0.0-20260804142931-aad73c450435
+	github.com/NeKiro-project/NeKiro v0.0.0-20260810043416-3e815b89cb37
 	github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260804145402-39c37c8929b5
 	github.com/a2aproject/a2a-go v0.3.15
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -17,6 +17,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.22.0 // indirect
+	github.com/nacos-group/nacos-sdk-go/v2 v2.3.5 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel v1.35.0 // indirect

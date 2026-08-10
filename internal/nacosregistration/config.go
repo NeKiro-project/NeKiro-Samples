@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/NeKiro-project/NeKiro/registry"
 )
 
 const (
@@ -23,22 +25,32 @@ var identifierPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`
 
 type Config struct {
 	Mode              string
+	AgentID           string
+	InstanceID        string
+	AgentCardVersion  string
+	ReleaseID         string
+	CardDigest        string
+	CanonicalEndpoint string
+	Audience          string
 	APIOrigin         string
 	NamespaceID       string
 	GroupName         string
 	ServiceName       string
 	ClusterName       string
+	PortName          string
 	AdvertisedIP      string
 	AdvertisedPort    int
+	Weight            float64
 	HeartbeatInterval time.Duration
+	HeartbeatTimeout  time.Duration
+	IPDeleteTimeout   time.Duration
 	RequestTimeout    time.Duration
 	AuthMode          string
 	AccessToken       string
-	InstanceID        string
 }
 
-func Load(lookup func(string) (string, bool), prefix, instanceID string) (Config, error) {
-	if lookup == nil || !identifierPattern.MatchString(instanceID) || prefix != "RUNTIME_A" && prefix != "RUNTIME_B" {
+func Load(lookup func(string) (string, bool), prefix, agentID, instanceID string) (Config, error) {
+	if lookup == nil || !identifierPattern.MatchString(agentID) || !identifierPattern.MatchString(instanceID) || prefix != "RUNTIME_A" && prefix != "RUNTIME_B" {
 		return Config{}, errorsFor(prefix, "registration dependencies are invalid")
 	}
 	name := func(suffix string) string { return prefix + "_" + suffix }
@@ -46,8 +58,13 @@ func Load(lookup func(string) (string, bool), prefix, instanceID string) (Config
 	if err != nil {
 		return Config{}, err
 	}
-	config := Config{Mode: mode, InstanceID: instanceID}
-	nacosSuffixes := []string{"NACOS_API_ORIGIN", "NACOS_NAMESPACE_ID", "NACOS_GROUP_NAME", "NACOS_SERVICE_NAME", "NACOS_CLUSTER_NAME", "NACOS_ADVERTISED_IP", "NACOS_ADVERTISED_PORT", "NACOS_HEARTBEAT_INTERVAL_MS", "NACOS_REQUEST_TIMEOUT_MS", "NACOS_AUTH_MODE", "NACOS_ACCESS_TOKEN"}
+	config := Config{Mode: mode, AgentID: agentID, InstanceID: instanceID}
+	nacosSuffixes := []string{
+		"AGENT_CARD_VERSION", "RELEASE_ID", "CARD_DIGEST", "CANONICAL_ENDPOINT", "AUDIENCE",
+		"NACOS_API_ORIGIN", "NACOS_NAMESPACE_ID", "NACOS_GROUP_NAME", "NACOS_SERVICE_NAME", "NACOS_CLUSTER_NAME", "NACOS_PORT_NAME",
+		"NACOS_ADVERTISED_IP", "NACOS_ADVERTISED_PORT", "NACOS_WEIGHT", "NACOS_HEARTBEAT_INTERVAL_MS", "NACOS_HEARTBEAT_TIMEOUT_MS",
+		"NACOS_IP_DELETE_TIMEOUT_MS", "NACOS_REQUEST_TIMEOUT_MS", "NACOS_AUTH_MODE", "NACOS_ACCESS_TOKEN",
+	}
 	if mode == ModeDisabled {
 		for _, suffix := range nacosSuffixes {
 			if _, exists := lookup(name(suffix)); exists {
@@ -58,6 +75,18 @@ func Load(lookup func(string) (string, bool), prefix, instanceID string) (Config
 	}
 	if mode != ModeNacos {
 		return Config{}, fmt.Errorf("%s is unsupported", name("REGISTRATION_MODE"))
+	}
+	for environment, destination := range map[string]*string{
+		name("AGENT_CARD_VERSION"): &config.AgentCardVersion,
+		name("RELEASE_ID"):         &config.ReleaseID,
+		name("CARD_DIGEST"):        &config.CardDigest,
+		name("CANONICAL_ENDPOINT"): &config.CanonicalEndpoint,
+		name("AUDIENCE"):           &config.Audience,
+	} {
+		*destination, err = required(lookup, environment)
+		if err != nil {
+			return Config{}, err
+		}
 	}
 	if config.APIOrigin, err = required(lookup, name("NACOS_API_ORIGIN")); err != nil {
 		return Config{}, err
@@ -70,6 +99,7 @@ func Load(lookup func(string) (string, bool), prefix, instanceID string) (Config
 		name("NACOS_GROUP_NAME"):   &config.GroupName,
 		name("NACOS_SERVICE_NAME"): &config.ServiceName,
 		name("NACOS_CLUSTER_NAME"): &config.ClusterName,
+		name("NACOS_PORT_NAME"):    &config.PortName,
 	} {
 		*destination, err = requiredIdentifier(lookup, environment)
 		if err != nil {
@@ -86,16 +116,23 @@ func Load(lookup func(string) (string, bool), prefix, instanceID string) (Config
 		return Config{}, err
 	}
 	config.AdvertisedPort = int(port)
-	heartbeat, err := requiredUnsigned(lookup, name("NACOS_HEARTBEAT_INTERVAL_MS"), minimumMillis, maximumMillis)
+	weight, err := requiredUnsigned(lookup, name("NACOS_WEIGHT"), 1, 10000)
 	if err != nil {
 		return Config{}, err
 	}
-	config.HeartbeatInterval = time.Duration(heartbeat) * time.Millisecond
-	timeout, err := requiredUnsigned(lookup, name("NACOS_REQUEST_TIMEOUT_MS"), minimumMillis, maximumMillis)
-	if err != nil {
+	config.Weight = float64(weight)
+	if config.HeartbeatInterval, err = requiredDuration(lookup, name("NACOS_HEARTBEAT_INTERVAL_MS"), 1000, maximumMillis); err != nil {
 		return Config{}, err
 	}
-	config.RequestTimeout = time.Duration(timeout) * time.Millisecond
+	if config.HeartbeatTimeout, err = requiredDuration(lookup, name("NACOS_HEARTBEAT_TIMEOUT_MS"), 1001, 300000); err != nil {
+		return Config{}, err
+	}
+	if config.IPDeleteTimeout, err = requiredDuration(lookup, name("NACOS_IP_DELETE_TIMEOUT_MS"), 1002, 600000); err != nil {
+		return Config{}, err
+	}
+	if config.RequestTimeout, err = requiredDuration(lookup, name("NACOS_REQUEST_TIMEOUT_MS"), minimumMillis, maximumMillis); err != nil {
+		return Config{}, err
+	}
 	config.AuthMode, err = required(lookup, name("NACOS_AUTH_MODE"))
 	if err != nil {
 		return Config{}, err
@@ -117,17 +154,23 @@ func Load(lookup func(string) (string, bool), prefix, instanceID string) (Config
 }
 
 func (config Config) Validate() error {
-	if !identifierPattern.MatchString(config.InstanceID) {
-		return errorsFor("runtime", "instance ID is invalid")
+	if !identifierPattern.MatchString(config.AgentID) || !identifierPattern.MatchString(config.InstanceID) {
+		return errorsFor("runtime", "registration identity is invalid")
 	}
 	if config.Mode == ModeDisabled {
 		return nil
 	}
-	if config.Mode != ModeNacos || validateOrigin(config.APIOrigin, "Nacos API origin") != nil || !identifierPattern.MatchString(config.NamespaceID) || !identifierPattern.MatchString(config.GroupName) || !identifierPattern.MatchString(config.ServiceName) || !identifierPattern.MatchString(config.ClusterName) {
+	if config.Mode != ModeNacos || validateOrigin(config.APIOrigin, "Nacos API origin") != nil || !identifierPattern.MatchString(config.NamespaceID) || !identifierPattern.MatchString(config.GroupName) || !identifierPattern.MatchString(config.ServiceName) || !identifierPattern.MatchString(config.ClusterName) || !identifierPattern.MatchString(config.PortName) {
 		return errorsFor("runtime", "Nacos registration tuple is invalid")
 	}
+	if _, err := registry.NewReleaseTarget(registry.ReleaseTargetInput{
+		AgentID: config.AgentID, AgentCardVersion: config.AgentCardVersion, ReleaseID: config.ReleaseID,
+		CardDigest: config.CardDigest, CanonicalEndpoint: config.CanonicalEndpoint, Audience: config.Audience,
+	}); err != nil {
+		return errorsFor("runtime", "exact Release target is invalid")
+	}
 	parsedIP := net.ParseIP(config.AdvertisedIP)
-	if parsedIP == nil || parsedIP.String() != config.AdvertisedIP || config.AdvertisedPort < 1 || config.AdvertisedPort > 65535 || config.HeartbeatInterval < minimumMillis*time.Millisecond || config.HeartbeatInterval > maximumMillis*time.Millisecond || config.RequestTimeout < minimumMillis*time.Millisecond || config.RequestTimeout > maximumMillis*time.Millisecond {
+	if parsedIP == nil || parsedIP.String() != config.AdvertisedIP || config.AdvertisedPort < 1 || config.AdvertisedPort > 65535 || config.Weight < 1 || config.Weight > 10000 || config.Weight != float64(int(config.Weight)) || config.HeartbeatInterval < time.Second || config.HeartbeatInterval > time.Minute || config.HeartbeatTimeout <= config.HeartbeatInterval || config.HeartbeatTimeout > 5*time.Minute || config.IPDeleteTimeout <= config.HeartbeatTimeout || config.IPDeleteTimeout > 10*time.Minute || config.RequestTimeout < minimumMillis*time.Millisecond || config.RequestTimeout > maximumMillis*time.Millisecond {
 		return errorsFor("runtime", "Nacos registration endpoint or timing is invalid")
 	}
 	if config.AuthMode != AuthNone && config.AuthMode != AuthAccessToken || config.AuthMode == AuthNone && config.AccessToken != "" || config.AuthMode == AuthAccessToken && strings.TrimSpace(config.AccessToken) == "" {
@@ -167,6 +210,11 @@ func requiredUnsigned(lookup func(string) (string, bool), name string, minimum, 
 		return 0, fmt.Errorf("%s must be an integer from %d through %d", name, minimum, maximum)
 	}
 	return parsed, nil
+}
+
+func requiredDuration(lookup func(string) (string, bool), name string, minimum, maximum int64) (time.Duration, error) {
+	value, err := requiredUnsigned(lookup, name, minimum, maximum)
+	return time.Duration(value) * time.Millisecond, err
 }
 
 func validateOrigin(value, name string) error {
