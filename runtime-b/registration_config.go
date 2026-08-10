@@ -24,6 +24,10 @@ const (
 	NacosRequestTimeoutEnvironment    = "RUNTIME_B_NACOS_REQUEST_TIMEOUT_MS"
 	NacosAuthModeEnvironment          = "RUNTIME_B_NACOS_AUTH_MODE"
 	NacosAccessTokenEnvironment       = "RUNTIME_B_NACOS_ACCESS_TOKEN"
+	NacosTLSCAFileEnvironment         = "RUNTIME_B_NACOS_TLS_CA_FILE"
+	NacosTLSServerNameEnvironment     = "RUNTIME_B_NACOS_TLS_SERVER_NAME"
+	NacosTLSClientCertEnvironment     = "RUNTIME_B_NACOS_TLS_CLIENT_CERT_FILE"
+	NacosTLSClientKeyEnvironment      = "RUNTIME_B_NACOS_TLS_CLIENT_KEY_FILE"
 	RegistrationModeDisabled          = nacosregistration.ModeDisabled
 	RegistrationModeNacos             = nacosregistration.ModeNacos
 	NacosAuthNone                     = nacosregistration.AuthNone

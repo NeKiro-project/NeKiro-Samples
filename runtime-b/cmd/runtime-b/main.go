@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/NeKiro-project/NeKiro-Samples/internal/challengeproof"
+	"github.com/NeKiro-project/NeKiro-Samples/internal/nacosregistration"
 	runtimeb "github.com/NeKiro-project/NeKiro-Samples/runtime-b"
 	"github.com/NeKiro-project/nekiro-sdk-go/agent/routerauth"
 )
@@ -42,7 +43,11 @@ func run() error {
 	var registration *runtimeb.NacosRegistration
 	var readiness runtimeb.Readiness = ready(true)
 	if registrationConfig.Mode == runtimeb.RegistrationModeNacos {
-		registration, err = runtimeb.NewNacosRegistration(registrationConfig, newNacosHTTPClient(registrationConfig.RequestTimeout))
+		registrationClient, clientErr := nacosregistration.NewHTTPClient(registrationConfig)
+		if clientErr != nil {
+			return fmt.Errorf("runtime-b Nacos registration transport: %w", clientErr)
+		}
+		registration, err = runtimeb.NewNacosRegistration(registrationConfig, registrationClient)
 		if err != nil {
 			return fmt.Errorf("runtime-b Nacos registration config: %w", err)
 		}
@@ -116,16 +121,3 @@ func run() error {
 type ready bool
 
 func (value ready) Ready() bool { return bool(value) }
-
-func newNacosHTTPClient(timeout time.Duration) *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	transport.DisableKeepAlives = true
-	return &http.Client{
-		Transport: transport,
-		Timeout:   timeout,
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return errors.New("Nacos redirects are disabled")
-		},
-	}
-}

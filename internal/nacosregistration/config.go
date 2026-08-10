@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -47,6 +48,10 @@ type Config struct {
 	RequestTimeout    time.Duration
 	AuthMode          string
 	AccessToken       string
+	TLSCAFile         string
+	TLSServerName     string
+	TLSClientCertFile string
+	TLSClientKeyFile  string
 }
 
 func Load(lookup func(string) (string, bool), prefix, agentID, instanceID string) (Config, error) {
@@ -64,6 +69,7 @@ func Load(lookup func(string) (string, bool), prefix, agentID, instanceID string
 		"NACOS_API_ORIGIN", "NACOS_NAMESPACE_ID", "NACOS_GROUP_NAME", "NACOS_SERVICE_NAME", "NACOS_CLUSTER_NAME", "NACOS_PORT_NAME",
 		"NACOS_ADVERTISED_IP", "NACOS_ADVERTISED_PORT", "NACOS_WEIGHT", "NACOS_HEARTBEAT_INTERVAL_MS", "NACOS_HEARTBEAT_TIMEOUT_MS",
 		"NACOS_IP_DELETE_TIMEOUT_MS", "NACOS_REQUEST_TIMEOUT_MS", "NACOS_AUTH_MODE", "NACOS_ACCESS_TOKEN",
+		"NACOS_TLS_CA_FILE", "NACOS_TLS_SERVER_NAME", "NACOS_TLS_CLIENT_CERT_FILE", "NACOS_TLS_CLIENT_KEY_FILE",
 	}
 	if mode == ModeDisabled {
 		for _, suffix := range nacosSuffixes {
@@ -93,6 +99,34 @@ func Load(lookup func(string) (string, bool), prefix, agentID, instanceID string
 	}
 	if err := validateOrigin(config.APIOrigin, name("NACOS_API_ORIGIN")); err != nil {
 		return Config{}, err
+	}
+	parsedOrigin, _ := url.Parse(config.APIOrigin)
+	tlsNames := []string{name("NACOS_TLS_CA_FILE"), name("NACOS_TLS_SERVER_NAME"), name("NACOS_TLS_CLIENT_CERT_FILE"), name("NACOS_TLS_CLIENT_KEY_FILE")}
+	if parsedOrigin.Scheme == "http" {
+		for _, environment := range tlsNames {
+			if _, exists := lookup(environment); exists {
+				return Config{}, fmt.Errorf("%s must be absent for HTTP Nacos registration", environment)
+			}
+		}
+	} else {
+		if config.TLSCAFile, err = required(lookup, tlsNames[0]); err != nil {
+			return Config{}, err
+		}
+		if !validTLSPath(config.TLSCAFile) {
+			return Config{}, fmt.Errorf("%s must be a clean absolute path", tlsNames[0])
+		}
+		if config.TLSServerName, err = required(lookup, tlsNames[1]); err != nil {
+			return Config{}, err
+		}
+		var certExists, keyExists bool
+		config.TLSClientCertFile, certExists = lookup(tlsNames[2])
+		config.TLSClientKeyFile, keyExists = lookup(tlsNames[3])
+		if certExists != keyExists || certExists && (!validTLSPath(config.TLSClientCertFile) || !validTLSPath(config.TLSClientKeyFile)) {
+			return Config{}, fmt.Errorf("%s and %s must be a complete non-empty pair", tlsNames[2], tlsNames[3])
+		}
+		if !validTLSServerName(config.TLSServerName) {
+			return Config{}, fmt.Errorf("%s must be a valid DNS name or IP address", tlsNames[1])
+		}
 	}
 	for environment, destination := range map[string]*string{
 		name("NACOS_NAMESPACE_ID"): &config.NamespaceID,
@@ -176,7 +210,41 @@ func (config Config) Validate() error {
 	if config.AuthMode != AuthNone && config.AuthMode != AuthAccessToken || config.AuthMode == AuthNone && config.AccessToken != "" || config.AuthMode == AuthAccessToken && strings.TrimSpace(config.AccessToken) == "" {
 		return errorsFor("runtime", "Nacos authentication configuration is invalid")
 	}
+	parsedOrigin, _ := url.Parse(config.APIOrigin)
+	if parsedOrigin.Scheme == "http" && (config.TLSCAFile != "" || config.TLSServerName != "" || config.TLSClientCertFile != "" || config.TLSClientKeyFile != "") {
+		return errorsFor("runtime", "Nacos HTTP registration cannot contain TLS configuration")
+	}
+	if parsedOrigin.Scheme == "https" && (!validTLSPath(config.TLSCAFile) || !validTLSServerName(config.TLSServerName) || (config.TLSClientCertFile == "") != (config.TLSClientKeyFile == "") || config.TLSClientCertFile != "" && (!validTLSPath(config.TLSClientCertFile) || !validTLSPath(config.TLSClientKeyFile))) {
+		return errorsFor("runtime", "Nacos HTTPS registration TLS configuration is invalid")
+	}
 	return nil
+}
+
+func validTLSPath(value string) bool {
+	return value != "" && strings.TrimSpace(value) == value && filepath.IsAbs(value) && filepath.Clean(value) == value
+}
+
+func validTLSServerName(value string) bool {
+	if parsed := net.ParseIP(value); parsed != nil {
+		return parsed.String() == value
+	}
+	if len(value) == 0 || len(value) > 253 || value != strings.ToLower(value) || strings.Contains(value, "..") || strings.Contains(value, ":") {
+		return false
+	}
+	if strings.Trim(value, "0123456789.") == "" {
+		return false
+	}
+	for _, label := range strings.Split(value, ".") {
+		if len(label) == 0 || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, character := range label {
+			if character != '-' && (character < '0' || character > '9') && (character < 'A' || character > 'Z') && (character < 'a' || character > 'z') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 func required(lookup func(string) (string, bool), name string) (string, error) {

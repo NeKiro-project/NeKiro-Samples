@@ -34,7 +34,11 @@ func run() error {
 	var registration *nacosregistration.Registration
 	var readiness runtimea.Readiness = ready(true)
 	if registrationConfig.Mode == nacosregistration.ModeNacos {
-		registration, err = nacosregistration.New(registrationConfig, newNacosHTTPClient(registrationConfig.RequestTimeout))
+		registrationClient, clientErr := nacosregistration.NewHTTPClient(registrationConfig)
+		if clientErr != nil {
+			return fmt.Errorf("runtime-a Nacos registration transport: %w", clientErr)
+		}
+		registration, err = nacosregistration.New(registrationConfig, registrationClient)
 		if err != nil {
 			return fmt.Errorf("runtime-a Nacos registration config: %w", err)
 		}
@@ -104,16 +108,3 @@ func run() error {
 type ready bool
 
 func (value ready) Ready() bool { return bool(value) }
-
-func newNacosHTTPClient(timeout time.Duration) *http.Client {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.Proxy = nil
-	transport.DisableKeepAlives = true
-	return &http.Client{
-		Transport: transport,
-		Timeout:   timeout,
-		CheckRedirect: func(*http.Request, []*http.Request) error {
-			return errors.New("Nacos redirects are disabled")
-		},
-	}
-}

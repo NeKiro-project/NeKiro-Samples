@@ -1,6 +1,9 @@
 package nacosregistration
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
 
 func TestLoadRequiresExactReleaseAndExplicitFreshness(t *testing.T) {
 	values := validEnvironment()
@@ -20,6 +23,56 @@ func TestLoadRequiresExactReleaseAndExplicitFreshness(t *testing.T) {
 		if _, err := Load(mapLookup(invalid), "RUNTIME_B", "runtime-b", "runtime-b-primary"); err == nil {
 			t.Errorf("missing %s was accepted", name)
 		}
+	}
+}
+
+func TestLoadRequiresExplicitHTTPSRegistrationTrust(t *testing.T) {
+	values := validEnvironment()
+	values["RUNTIME_B_NACOS_API_ORIGIN"] = "https://nacos.internal:8848/nacos"
+	values["RUNTIME_B_NACOS_TLS_CA_FILE"] = filepath.Join(t.TempDir(), "ca.pem")
+	values["RUNTIME_B_NACOS_TLS_SERVER_NAME"] = "nacos.internal"
+	config, err := Load(mapLookup(values), "RUNTIME_B", "runtime-b", "runtime-b-primary")
+	if err != nil || config.TLSCAFile == "" || config.TLSServerName != "nacos.internal" {
+		t.Fatalf("HTTPS config=%#v error=%v", config, err)
+	}
+
+	for name, mutate := range map[string]func(map[string]string){
+		"missing CA":          func(values map[string]string) { delete(values, "RUNTIME_B_NACOS_TLS_CA_FILE") },
+		"missing server name": func(values map[string]string) { delete(values, "RUNTIME_B_NACOS_TLS_SERVER_NAME") },
+		"relative CA":         func(values map[string]string) { values["RUNTIME_B_NACOS_TLS_CA_FILE"] = "ca.pem" },
+		"invalid server name": func(values map[string]string) { values["RUNTIME_B_NACOS_TLS_SERVER_NAME"] = "nacos_internal" },
+		"client cert only": func(values map[string]string) {
+			values["RUNTIME_B_NACOS_TLS_CLIENT_CERT_FILE"] = filepath.Join(t.TempDir(), "client.pem")
+		},
+		"client key only": func(values map[string]string) {
+			values["RUNTIME_B_NACOS_TLS_CLIENT_KEY_FILE"] = filepath.Join(t.TempDir(), "client-key.pem")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			invalid := make(map[string]string, len(values))
+			for key, value := range values {
+				invalid[key] = value
+			}
+			mutate(invalid)
+			if _, err := Load(mapLookup(invalid), "RUNTIME_B", "runtime-b", "runtime-b-primary"); err == nil {
+				t.Fatal("invalid HTTPS registration trust was accepted")
+			}
+		})
+	}
+}
+
+func TestLoadRejectsTLSFieldsForHTTPAndDisabledRegistration(t *testing.T) {
+	for _, mode := range []string{"http", "disabled"} {
+		t.Run(mode, func(t *testing.T) {
+			values := validEnvironment()
+			if mode == "disabled" {
+				values = map[string]string{"RUNTIME_B_REGISTRATION_MODE": ModeDisabled}
+			}
+			values["RUNTIME_B_NACOS_TLS_CA_FILE"] = filepath.Join(t.TempDir(), "ca.pem")
+			if _, err := Load(mapLookup(values), "RUNTIME_B", "runtime-b", "runtime-b-primary"); err == nil {
+				t.Fatal("non-HTTPS registration accepted TLS fields")
+			}
+		})
 	}
 }
 
