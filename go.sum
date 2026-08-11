@@ -2,8 +2,8 @@ github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAw
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/NeKiro-project/NeKiro v0.0.0-20260810043416-3e815b89cb37 h1:ai0eN+G2k6rwtF9h1dDhDKzloueH6AyuJp2UOIoyQec=
 github.com/NeKiro-project/NeKiro v0.0.0-20260810043416-3e815b89cb37/go.mod h1:JCIEeiLu52WC/Q5QlcAKmWKRtW7CNLkZ3lV3BAn92Oo=
-github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260804145402-39c37c8929b5 h1:wx8nuBluyNb7MhMOURtX/9/Q+FBNcniJqoCMpxBnrwE=
-github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260804145402-39c37c8929b5/go.mod h1:lxAQLsSVXE3lmWoz+SMDKsDOc1b0Vj7okAGNkE7KFRI=
+github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260811153316-3f4c32d6e895 h1:In02gBJq2ZHUdfjcPYrz2BePtJOfdscNBxQOiL8mu14=
+github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260811153316-3f4c32d6e895/go.mod h1:lxAQLsSVXE3lmWoz+SMDKsDOc1b0Vj7okAGNkE7KFRI=
 github.com/a2aproject/a2a-go v0.3.15 h1:h5YpCiPq3jxQ5rIns7oDjPag3ivP8u817AzdA4F+NiI=
 github.com/a2aproject/a2a-go v0.3.15/go.mod h1:I7Cm+a1oL+UT6zMoP+roaRE5vdfUa1iQGVN8aSOuZ0I=
 github.com/bmatcuk/doublestar/v4 v4.9.1 h1:X8jg9rRZmJd4yRy7ZeNDRnM+T3ZfHv15JiBJ/avrEXE=
