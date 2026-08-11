@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/NeKiro-project/NeKiro v0.0.0-20260811175413-b588c754e369
-	github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260811193349-48d495894a5e
+	github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260811200209-d7e06dff6115
 	github.com/a2aproject/a2a-go v0.3.15
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	trpc.group/trpc-go/trpc-agent-go v1.10.0
