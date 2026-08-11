@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/NeKiro-project/NeKiro-Samples/internal/challengeproof"
-	"github.com/NeKiro-project/NeKiro-Samples/internal/nacosregistration"
 	runtimea "github.com/NeKiro-project/NeKiro-Samples/runtime-a"
 	agenthost "github.com/NeKiro-project/nekiro-sdk-go/agent/host"
+	registrationnacos "github.com/NeKiro-project/nekiro-sdk-go/agent/registration/nacos"
 )
 
 func main() {
@@ -29,23 +29,13 @@ func runWithLookup(lookup func(string) (string, bool)) error {
 	if err != nil {
 		return agenthost.Wrap(agenthost.StageConfig, "load Runtime A configuration", err)
 	}
-	registrationConfig, err := nacosregistration.Load(lookup, "RUNTIME_A", config.AgentID, config.InstanceID)
+	registrationConfig, err := registrationnacos.LoadConfig(lookup, "RUNTIME_A", config.AgentID, config.InstanceID)
 	if err != nil {
 		return agenthost.Wrap(agenthost.StageConfig, "load Runtime A registration configuration", err)
 	}
-	var registration agenthost.Registration
-	var readiness runtimea.Readiness = ready(true)
-	if registrationConfig.Mode == nacosregistration.ModeNacos {
-		registrationClient, clientErr := nacosregistration.NewHTTPClient(registrationConfig)
-		if clientErr != nil {
-			return agenthost.Wrap(agenthost.StageRegistration, "create Runtime A Nacos transport", clientErr)
-		}
-		runtimeRegistration, err := nacosregistration.New(registrationConfig, registrationClient)
-		if err != nil {
-			return agenthost.Wrap(agenthost.StageRegistration, "create Runtime A registration", err)
-		}
-		registration = runtimeRegistration
-		readiness = runtimeRegistration
+	registration, readiness, err := newRuntimeRegistration(registrationConfig)
+	if err != nil {
+		return agenthost.Wrap(agenthost.StageRegistration, "create Runtime A registration", err)
 	}
 	handler, err := runtimea.NewHandler(config, http.DefaultClient)
 	if err != nil {
@@ -75,3 +65,14 @@ func runWithLookup(lookup func(string) (string, bool)) error {
 type ready bool
 
 func (value ready) Ready() bool { return bool(value) }
+
+func newRuntimeRegistration(config registrationnacos.Config) (agenthost.Registration, runtimea.Readiness, error) {
+	if config.Mode == registrationnacos.ModeDisabled {
+		return nil, ready(true), nil
+	}
+	registration, err := registrationnacos.New(config)
+	if err != nil {
+		return nil, nil, err
+	}
+	return registration, registration, nil
+}

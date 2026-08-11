@@ -32,9 +32,10 @@ provide the exact target fields `RUNTIME_A_AGENT_CARD_VERSION`,
 `RUNTIME_A_CANONICAL_ENDPOINT`, and `RUNTIME_A_AUDIENCE`; the Nacos tuple;
 `RUNTIME_A_NACOS_PORT_NAME`, advertised IP/port and weight; explicit heartbeat,
 heartbeat-timeout, IP-delete-timeout, and request-timeout values; and the
-selected authentication mode. Runtime A uses Core's `InstanceRegistrar` and
-`InstanceLease`, fails startup if the initial publish fails, becomes not-ready
-and stops on terminal lease failure, and explicitly deregisters on shutdown.
+selected authentication mode. Runtime A composes Core's `InstanceRegistrar`
+and `InstanceLease` through the public SDK `agent/registration/nacos` package,
+fails startup if the initial publish fails, becomes not-ready and stops on
+terminal lease failure, and explicitly deregisters on shutdown.
 
 The `RUNTIME_A_NACOS_API_ORIGIN` scheme explicitly selects the registration
 transport. An `http` origin is controlled plaintext and every Nacos TLS field

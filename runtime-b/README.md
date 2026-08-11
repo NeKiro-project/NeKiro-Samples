@@ -63,10 +63,11 @@ the sample's JSON and SSE results so Stack acceptance can prove which replica
 handled an Invocation. It does not change the Agent ID, Release identity,
 Router credential audience, or nested-call authorization.
 
-With `nacos` registration, Runtime B uses Core's provider-neutral
-`InstanceRegistrar` and `InstanceLease` contracts. The ready instance is bound
-to one exact Agent Card/Release target before serving, its freshness values are
-explicitly published, and shutdown closes the lease and deregisters it. A
+With `nacos` registration, Runtime B composes Core's provider-neutral
+`InstanceRegistrar` and `InstanceLease` contracts through the public SDK
+`agent/registration/nacos` package. The ready instance is bound to one exact
+Agent Card/Release target before serving, its freshness values are explicitly
+published, and shutdown closes the lease and deregisters it. A
 failed initial registration fails startup. A terminal heartbeat failure closes
 the lease, makes `/readyz` return `503`, and stops serving; there is no retry,
 alternate Nacos endpoint, stale lease, or Release fallback.
