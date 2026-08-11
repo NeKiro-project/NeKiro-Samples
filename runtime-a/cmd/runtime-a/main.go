@@ -2,18 +2,16 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/NeKiro-project/NeKiro-Samples/internal/challengeproof"
 	"github.com/NeKiro-project/NeKiro-Samples/internal/nacosregistration"
 	runtimea "github.com/NeKiro-project/NeKiro-Samples/runtime-a"
+	agenthost "github.com/NeKiro-project/nekiro-sdk-go/agent/host"
 )
 
 func main() {
@@ -23,86 +21,55 @@ func main() {
 }
 
 func run() error {
-	config, err := runtimea.LoadConfig(os.LookupEnv)
+	return runWithLookup(os.LookupEnv)
+}
+
+func runWithLookup(lookup func(string) (string, bool)) error {
+	config, err := runtimea.LoadConfig(lookup)
 	if err != nil {
-		return err
+		return agenthost.Wrap(agenthost.StageConfig, "load Runtime A configuration", err)
 	}
-	registrationConfig, err := nacosregistration.Load(os.LookupEnv, "RUNTIME_A", config.AgentID, config.InstanceID)
+	registrationConfig, err := nacosregistration.Load(lookup, "RUNTIME_A", config.AgentID, config.InstanceID)
 	if err != nil {
-		return err
+		return agenthost.Wrap(agenthost.StageConfig, "load Runtime A registration configuration", err)
 	}
-	var registration *nacosregistration.Registration
+	var registration agenthost.Registration
 	var readiness runtimea.Readiness = ready(true)
 	if registrationConfig.Mode == nacosregistration.ModeNacos {
 		registrationClient, clientErr := nacosregistration.NewHTTPClient(registrationConfig)
 		if clientErr != nil {
-			return fmt.Errorf("runtime-a Nacos registration transport: %w", clientErr)
+			return agenthost.Wrap(agenthost.StageRegistration, "create Runtime A Nacos transport", clientErr)
 		}
-		registration, err = nacosregistration.New(registrationConfig, registrationClient)
+		runtimeRegistration, err := nacosregistration.New(registrationConfig, registrationClient)
 		if err != nil {
-			return fmt.Errorf("runtime-a Nacos registration config: %w", err)
+			return agenthost.Wrap(agenthost.StageRegistration, "create Runtime A registration", err)
 		}
-		readiness = registration
+		registration = runtimeRegistration
+		readiness = runtimeRegistration
 	}
 	handler, err := runtimea.NewHandler(config, http.DefaultClient)
 	if err != nil {
-		return fmt.Errorf("runtime-a initialize: %w", err)
+		return agenthost.Wrap(agenthost.StageHandler, "create Runtime A handler", err)
 	}
-	application, err := challengeproof.NewHandler(runtimea.NewHTTPHandlerWithReadiness(handler, readiness), os.LookupEnv)
+	application, err := challengeproof.NewHandler(runtimea.NewHTTPHandlerWithReadiness(handler, readiness), lookup)
 	if err != nil {
-		return fmt.Errorf("runtime-a challenge proof: %w", err)
+		return agenthost.Wrap(agenthost.StageHandler, "configure Runtime A endpoint challenge", err)
 	}
-	if registration != nil {
-		if err := registration.Register(context.Background()); err != nil {
-			return err
-		}
-	}
-	server := &http.Server{Addr: config.ListenAddress, Handler: application}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	serverErrors := make(chan error, 1)
-	go func() {
-		err := server.ListenAndServe()
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serverErrors <- fmt.Errorf("runtime-a serve: %w", err)
-			return
-		}
-		serverErrors <- nil
-	}()
-	var registrationErrors chan error
-	if registration != nil {
-		registrationErrors = make(chan error, 1)
-		go func() { registrationErrors <- registration.Run(ctx) }()
-	}
-	var runErr error
-	registrationStopped := registration == nil
-	select {
-	case <-ctx.Done():
-	case runErr = <-serverErrors:
-	case runErr = <-registrationErrors:
-		registrationStopped = true
-	}
-	stop()
 	shutdownTimeout := 5 * time.Second
 	if registrationConfig.RequestTimeout > 0 {
 		shutdownTimeout = registrationConfig.RequestTimeout
 	}
-	shutdownContext, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
-	defer cancel()
-	shutdownErr := server.Shutdown(shutdownContext)
-	if !registrationStopped {
-		select {
-		case registrationErr := <-registrationErrors:
-			runErr = errors.Join(runErr, registrationErr)
-		case <-shutdownContext.Done():
-			runErr = errors.Join(runErr, errors.New("Runtime A Nacos heartbeat did not stop before shutdown"))
-		}
+	runtimeHost, err := agenthost.New(agenthost.Config{
+		Address:         config.ListenAddress,
+		Handler:         application,
+		Registration:    registration,
+		ShutdownTimeout: shutdownTimeout,
+		Signals:         []os.Signal{os.Interrupt, syscall.SIGTERM},
+	})
+	if err != nil {
+		return err
 	}
-	var deregisterErr error
-	if registration != nil {
-		deregisterErr = registration.Deregister(shutdownContext)
-	}
-	return errors.Join(runErr, shutdownErr, deregisterErr)
+	return runtimeHost.Run(context.Background())
 }
 
 type ready bool
