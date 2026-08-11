@@ -16,8 +16,9 @@ contract/SDK source.
 
 The two samples deliberately do not import each other. Their shared platform
 behavior is limited to public Core contracts, the public Go SDK, and the A2A
-wire profile. `internal/challengeproof` contains only sample-owned endpoint
-ownership proof handling.
+wire profile. Both provider entrypoints use the public SDK's
+`agent/registration/nacos` package; `internal/challengeproof` contains only
+sample-owned endpoint ownership proof handling.
 
 ## Repository verification
 
