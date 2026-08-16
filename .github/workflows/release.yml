@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out the tagged revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+
+      - name: Verify annotated semantic tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          test "$(git cat-file -t "$RELEASE_TAG")" = tag
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+
+      - name: Set up Go
+        uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Verify release source
+        run: |
+          go mod verify
+          go build ./...
+          go test ./...
+          go vet ./...
+
+      - name: Authenticate to GHCR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Publish Runtime images with provenance and SBOM
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          docker buildx create --use
+          for runtime in a b; do
+            image="ghcr.io/nekiro-project/nekiro-runtime-$runtime"
+            docker buildx build \
+              --file "runtime-$runtime/Dockerfile" \
+              --platform linux/amd64,linux/arm64 \
+              --provenance=mode=max \
+              --sbom=true \
+              --metadata-file "runtime-$runtime-metadata.json" \
+              --tag "$image:$RELEASE_TAG" \
+              --push .
+          done
+
+      - name: Write immutable release evidence
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          runtime_a_digest="$(jq -r '.["containerimage.digest"]' runtime-a-metadata.json)"
+          runtime_b_digest="$(jq -r '.["containerimage.digest"]' runtime-b-metadata.json)"
+          test "$runtime_a_digest" != null
+          test "$runtime_b_digest" != null
+          jq -n \
+            --arg tag "$RELEASE_TAG" \
+            --arg commit "$GITHUB_SHA" \
+            --arg runtimeAImage "ghcr.io/nekiro-project/nekiro-runtime-a:$RELEASE_TAG" \
+            --arg runtimeADigest "$runtime_a_digest" \
+            --arg runtimeBImage "ghcr.io/nekiro-project/nekiro-runtime-b:$RELEASE_TAG" \
+            --arg runtimeBDigest "$runtime_b_digest" \
+            '{schemaVersion:"1",tag:$tag,commitSha:$commit,agentIngressVersion:"v1",images:{runtimeA:{reference:$runtimeAImage,digest:$runtimeADigest},runtimeB:{reference:$runtimeBImage,digest:$runtimeBDigest}}}' > images.json
+          sha256sum images.json > checksums.txt
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" images.json checksums.txt --verify-tag --generate-notes --title "NeKiro Samples $RELEASE_TAG"

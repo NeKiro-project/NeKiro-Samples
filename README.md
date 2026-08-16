@@ -20,6 +20,9 @@ wire profile. Both provider entrypoints use the public SDK's
 `agent/registration/nacos` package; `internal/challengeproof` contains only
 sample-owned endpoint ownership proof handling.
 
+Both Runtime servers expose the stable Agent ingress `/agent/v1`. They do not
+call Gateway Platform API routes and do not implement fallback route probing.
+
 ## Repository verification
 
 ```text
@@ -71,6 +74,15 @@ fails startup.
 Do not invent placeholder credentials simply to make a process start. Use
 NeKiro-Stack for a real local run so the Router, signed credential policy,
 Agent Cards, publication, installation, and Ledger are all explicit.
+
+## Releases
+
+An annotated semantic tag publishes both Runtime images to GHCR for
+`linux/amd64` and `linux/arm64`. The GitHub Release includes `images.json` with
+the exact tag, source commit, and immutable digest for each image plus a
+checksum file. The images are consumable inputs for the matching NeKiro-Stack
+release; a source commit by itself is not presented as a supported product
+combination.
 
 ## RepoWiki
 
