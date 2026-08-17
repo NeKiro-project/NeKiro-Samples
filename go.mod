@@ -3,8 +3,8 @@ module github.com/NeKiro-project/NeKiro-Samples
 go 1.26.0
 
 require (
-	github.com/NeKiro-project/NeKiro v0.0.0-20260816232744-ad6ef152cd87
-	github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260816232840-57638b6df6e8
+	github.com/NeKiro-project/NeKiro v0.0.0-20260817000254-c7f5abac9a9b
+	github.com/NeKiro-project/nekiro-sdk-go v0.0.0-20260817000403-ef4fd2f78974
 	github.com/a2aproject/a2a-go v0.3.15
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	trpc.group/trpc-go/trpc-agent-go v1.10.0
