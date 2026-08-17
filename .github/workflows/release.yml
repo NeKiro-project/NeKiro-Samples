@@ -26,6 +26,7 @@ jobs:
         run: |
           test "$(git cat-file -t "$RELEASE_TAG")" = tag
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$GITHUB_SHA"
 
       - name: Set up Go
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
@@ -71,8 +72,8 @@ jobs:
         run: |
           runtime_a_digest="$(jq -r '.["containerimage.digest"]' runtime-a-metadata.json)"
           runtime_b_digest="$(jq -r '.["containerimage.digest"]' runtime-b-metadata.json)"
-          test "$runtime_a_digest" != null
-          test "$runtime_b_digest" != null
+          [[ "$runtime_a_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$runtime_b_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
           jq -n \
             --arg tag "$RELEASE_TAG" \
             --arg commit "$GITHUB_SHA" \
