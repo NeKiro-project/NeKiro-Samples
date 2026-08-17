@@ -24,9 +24,12 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          test "$(git cat-file -t "$RELEASE_TAG")" = tag
+          release_verify_ref="refs/tags/release-verify"
+          git fetch --force --no-tags origin "refs/tags/$RELEASE_TAG:$release_verify_ref"
+          test "$(git cat-file -t "$release_verify_ref")" = tag
           [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$GITHUB_SHA"
+          test "$(git rev-list -n 1 "$release_verify_ref")" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
 
       - name: Set up Go
         uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
